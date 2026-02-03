@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.22 AS build
+FROM golang:1.24 AS build
 WORKDIR /src
 COPY . .
 RUN go build -o /out/edrmount ./cmd/edrmount
 
 FROM ubuntu:jammy
-RUN apt-get update && apt-get install -y ca-certificates fuse curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates fuse curl libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/edrmount /usr/local/bin/edrmount
 
 # ---- ngpost (bundled AppImage contents) ----
@@ -21,7 +21,13 @@ RUN curl -L -o /tmp/ngpost.AppImage "https://github.com/mbruel/ngPost/releases/d
     && rm -f /tmp/ngpost.AppImage
 
 # Wrapper so runner can call /usr/local/bin/ngpost
-RUN bash -lc 'cat > /usr/local/bin/ngpost <<"SH"\n#!/usr/bin/env bash\nset -euo pipefail\nexport LD_LIBRARY_PATH="/opt/ngpost/lib:${LD_LIBRARY_PATH:-}"\nexec /opt/ngpost/AppRun "$@"\nSH\nchmod +x /usr/local/bin/ngpost'
+RUN printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'export LD_LIBRARY_PATH="/opt/ngpost/lib:${LD_LIBRARY_PATH:-}"' \
+  'exec /opt/ngpost/AppRun "$@"' \
+  > /usr/local/bin/ngpost \
+  && chmod +x /usr/local/bin/ngpost
 
 # runtime dirs
 RUN mkdir -p /config /host /cache
