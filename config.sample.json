@@ -6,5 +6,8 @@
     "nzb_inbox": "/host/inbox/nzb",
     "media_inbox": "/host/inbox/media",
     "cache_dir": "/cache"
+  },
+  "runner": {
+    "mode": "stub"
   }
 }

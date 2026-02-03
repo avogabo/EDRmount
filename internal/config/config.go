@@ -18,9 +18,14 @@ type Server struct {
 	Addr string `json:"addr"`
 }
 
+type Runner struct {
+	Mode string `json:"mode"` // "stub" or "exec" (dev)
+}
+
 type Config struct {
 	Server Server `json:"server"`
 	Paths  Paths  `json:"paths"`
+	Runner Runner `json:"runner"`
 }
 
 func Default() Config {
@@ -33,6 +38,7 @@ func Default() Config {
 			MediaInbox: "/host/inbox/media",
 			CacheDir:   "/cache",
 		},
+		Runner: Runner{Mode: "stub"},
 	}
 }
 

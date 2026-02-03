@@ -44,6 +44,7 @@ func main() {
 		go w.Run(ctx)
 
 		r := runner.New(srvJobs)
+		r.Mode = cfg.Runner.Mode
 		go r.Run(ctx)
 	}
 
