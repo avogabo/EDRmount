@@ -19,8 +19,15 @@
     <h3>Endpoints</h3>
     <ul>
       <li><code>/live</code></li>
-      <li><code>/api/v1/config</code></li>
+      <li><code>/api/v1/config</code> (GET/PUT)</li>
+      <li><code>/api/v1/jobs</code> (GET)</li>
+      <li><code>/api/v1/jobs/enqueue/import</code> (POST)</li>
+      <li><code>/api/v1/jobs/enqueue/upload</code> (POST)</li>
+      <li><code>/api/v1/jobs/&lt;id&gt;/logs</code> (GET)</li>
     </ul>
+
+    <h3>Quick check</h3>
+    <p>Open <code>/api/v1/jobs</code> to see the queue. Then open a job logs endpoint to see runner output.</p>
 
     <h3>Defaults</h3>
     <ul>

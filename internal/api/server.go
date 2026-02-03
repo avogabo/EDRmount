@@ -177,6 +177,9 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 		_ = json.NewEncoder(w).Encode(job)
 	})
 
+	// Extra routes
+	s.registerJobLogRoutes()
+
 	// UI static (placeholder for now)
 	ui := http.FS(uiFS)
 	s.mux.Handle("/", http.FileServer(ui))
