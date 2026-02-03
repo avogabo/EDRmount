@@ -22,7 +22,17 @@ func main() {
 		log.Fatalf("config validate: %v", err)
 	}
 
-	srv := api.New(cfg)
+	dbPath := "/config/edrmount.db"
+	srv, closeFn, err := api.New(cfg, api.Options{ConfigPath: cfgPath, DBPath: dbPath})
+	if err != nil {
+		log.Fatalf("api init: %v", err)
+	}
+	defer func() {
+		if closeFn != nil {
+			_ = closeFn()
+		}
+	}()
+
 	log.Printf("EDRmount listening on %s", cfg.Server.Addr)
 	if err := http.ListenAndServe(cfg.Server.Addr, srv.Handler()); err != nil {
 		log.Fatalf("server: %v", err)
