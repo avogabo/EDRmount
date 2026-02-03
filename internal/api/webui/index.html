@@ -29,7 +29,41 @@
     </div>
 
     <div class="card">
-      <h2>Settings (config.json)</h2>
+      <h2>Provider / ngpost</h2>
+      <div class="row">
+        <label><input type="checkbox" id="ng_enabled" /> Enable ngpost</label>
+      </div>
+      <div class="row">
+        <label>Host <input id="ng_host" style="min-width:320px" /></label>
+        <label>Port <input id="ng_port" style="width:90px" type="number" /></label>
+        <label><input type="checkbox" id="ng_ssl" /> SSL</label>
+      </div>
+      <div class="row">
+        <label>User <input id="ng_user" style="min-width:220px" /></label>
+        <label>Pass <input id="ng_pass" style="min-width:220px" type="password" placeholder="(leave blank to keep)" /></label>
+      </div>
+      <div class="row">
+        <label>Groups <input id="ng_groups" style="min-width:520px" placeholder="alt.binaries..." /></label>
+      </div>
+      <div class="row">
+        <label>Connections <input id="ng_connections" style="width:90px" type="number" /></label>
+        <label>Threads <input id="ng_threads" style="width:90px" type="number" /></label>
+        <label>NZB output_dir <input id="ng_output_dir" style="min-width:360px" /></label>
+      </div>
+      <div class="row">
+        <label>tmp_dir <input id="ng_tmp_dir" style="min-width:360px" /></label>
+        <label><input type="checkbox" id="ng_obfuscate" /> Obfuscate</label>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnTestProvider">Test connectivity</button>
+        <button class="btn" id="btnSaveProvider">Save provider</button>
+        <span class="muted" id="provStatus"></span>
+      </div>
+      <div class="muted">Test checks TCP/TLS connectivity only (auth test comes later).</div>
+    </div>
+
+    <div class="card">
+      <h2>Settings (full config.json)</h2>
       <div class="row">
         <button class="btn" id="btnReloadConfig">Reload</button>
         <button class="btn" id="btnSaveConfig">Save</button>

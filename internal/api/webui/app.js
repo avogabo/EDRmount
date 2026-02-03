@@ -81,6 +81,21 @@ async function loadConfigEditor() {
   const cfg = await apiGet('/api/v1/config');
   ta.value = fmtJSON(cfg);
   status.textContent = '';
+
+  // Fill provider form (ngpost)
+  const n = (cfg.ngpost || {});
+  document.getElementById('ng_enabled').checked = !!n.enabled;
+  document.getElementById('ng_host').value = n.host || '';
+  document.getElementById('ng_port').value = n.port || 563;
+  document.getElementById('ng_ssl').checked = (n.ssl !== false);
+  document.getElementById('ng_user').value = n.user || '';
+  document.getElementById('ng_pass').value = (n.pass && n.pass !== '***') ? n.pass : '';
+  document.getElementById('ng_groups').value = n.groups || '';
+  document.getElementById('ng_connections').value = n.connections || 20;
+  document.getElementById('ng_threads').value = n.threads || 2;
+  document.getElementById('ng_output_dir').value = n.output_dir || '/host/inbox/nzb';
+  document.getElementById('ng_tmp_dir').value = n.tmp_dir || '';
+  document.getElementById('ng_obfuscate').checked = !!n.obfuscate;
 }
 
 async function saveConfigEditor() {
@@ -92,6 +107,57 @@ async function saveConfigEditor() {
     const out = await apiPutJson('/api/v1/config', parsed);
     ta.value = fmtJSON(out);
     status.textContent = 'Saved.';
+    await loadConfigEditor();
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function saveProviderForm() {
+  const status = document.getElementById('provStatus');
+  status.textContent = 'Saving provider settings...';
+  try {
+    const cfg = await apiGet('/api/v1/config');
+    cfg.ngpost = cfg.ngpost || {};
+    cfg.ngpost.enabled = document.getElementById('ng_enabled').checked;
+    cfg.ngpost.host = document.getElementById('ng_host').value.trim();
+    cfg.ngpost.port = Number(document.getElementById('ng_port').value || 563);
+    cfg.ngpost.ssl = document.getElementById('ng_ssl').checked;
+    cfg.ngpost.user = document.getElementById('ng_user').value;
+    // Only overwrite pass if user typed one
+    const pass = document.getElementById('ng_pass').value;
+    if (pass && pass.trim() !== '') cfg.ngpost.pass = pass;
+    cfg.ngpost.groups = document.getElementById('ng_groups').value.trim();
+    cfg.ngpost.connections = Number(document.getElementById('ng_connections').value || 20);
+    cfg.ngpost.threads = Number(document.getElementById('ng_threads').value || 2);
+    cfg.ngpost.output_dir = document.getElementById('ng_output_dir').value.trim();
+    cfg.ngpost.tmp_dir = document.getElementById('ng_tmp_dir').value.trim();
+    cfg.ngpost.obfuscate = document.getElementById('ng_obfuscate').checked;
+
+    const out = await apiPutJson('/api/v1/config', cfg);
+    document.getElementById('config').value = fmtJSON(out);
+    status.textContent = 'Saved provider settings.';
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function testProvider() {
+  const status = document.getElementById('provStatus');
+  status.textContent = 'Testing connectivity...';
+  try {
+    const req = {
+      host: document.getElementById('ng_host').value.trim(),
+      port: Number(document.getElementById('ng_port').value || 563),
+      ssl: document.getElementById('ng_ssl').checked
+    };
+    const r = await fetch('/api/v1/provider/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(req)
+    });
+    const data = await r.json();
+    status.textContent = (data.ok ? 'OK' : 'FAIL') + ` (${data.latency_ms} ms): ${data.message}`;
   } catch (e) {
     status.textContent = 'Error: ' + String(e);
   }
@@ -107,5 +173,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnReloadConfig').onclick = () => loadConfigEditor().catch(err => alert(err));
   document.getElementById('btnSaveConfig').onclick = () => saveConfigEditor().catch(err => alert(err));
   document.getElementById('btnRefreshJobs').onclick = () => refreshJobs().catch(err => alert(err));
+  document.getElementById('btnSaveProvider').onclick = () => saveProviderForm().catch(err => alert(err));
+  document.getElementById('btnTestProvider').onclick = () => testProvider().catch(err => alert(err));
   boot().catch(err => alert(err));
 });

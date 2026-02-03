@@ -94,7 +94,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 
 	if r.Mode == "exec" {
 		// If ngpost is enabled and configured, run it; otherwise run a dev dummy command.
-		if r.NgPost.Enabled && r.NgPost.Host != "" && r.NgPost.User != "" && r.NgPost.Pass != "" {
+		if r.NgPost.Enabled && r.NgPost.Host != "" && r.NgPost.User != "" && r.NgPost.Pass != "" && r.NgPost.Groups != "" {
 			outDir := r.NgPost.OutputDir
 			if outDir == "" {
 				outDir = "/host/inbox/nzb"
@@ -137,6 +137,9 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			// Chain import
 			_, _ = r.jobs.Enqueue(ctx, jobs.TypeImport, map[string]string{"path": outNZB})
 			return
+		}
+		if r.NgPost.Enabled {
+			_ = r.jobs.AppendLog(ctx, j.ID, "ngpost enabled but missing config fields (need host/user/pass/groups)")
 		}
 
 		_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("exec upload (dev dummy): %s", p.Path))
