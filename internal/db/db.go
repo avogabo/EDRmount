@@ -55,6 +55,13 @@ func (d *DB) migrate() error {
 			line TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_job_logs_job_ts ON job_logs(job_id, ts);`,
+		`CREATE TABLE IF NOT EXISTS ingest_seen (
+			path TEXT PRIMARY KEY,
+			kind TEXT NOT NULL,
+			size INTEGER NOT NULL,
+			mtime INTEGER NOT NULL,
+			seen_at INTEGER NOT NULL
+		);`,
 	}
 	for _, s := range stmts {
 		if _, err := d.SQL.Exec(s); err != nil {

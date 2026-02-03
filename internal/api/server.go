@@ -185,3 +185,5 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 }
 
 func (s *Server) Handler() http.Handler { return s.mux }
+
+func (s *Server) Jobs() *jobs.Store { return s.jobs }

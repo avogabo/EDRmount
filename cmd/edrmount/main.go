@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 
 	"github.com/gaby/EDRmount/internal/api"
 	"github.com/gaby/EDRmount/internal/config"
+	"github.com/gaby/EDRmount/internal/runner"
+	"github.com/gaby/EDRmount/internal/watch"
 )
 
 func main() {
@@ -32,6 +35,17 @@ func main() {
 			_ = closeFn()
 		}
 	}()
+
+	// Start background watcher + runner (stubs for now).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if srvJobs := srv.Jobs(); srvJobs != nil {
+		w := watch.New(srvJobs, cfg.Paths.NzbInbox, cfg.Paths.MediaInbox)
+		go w.Run(ctx)
+
+		r := runner.New(srvJobs)
+		go r.Run(ctx)
+	}
 
 	log.Printf("EDRmount listening on %s", cfg.Server.Addr)
 	if err := http.ListenAndServe(cfg.Server.Addr, srv.Handler()); err != nil {

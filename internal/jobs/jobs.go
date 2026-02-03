@@ -84,8 +84,8 @@ func (s *Store) List(ctx context.Context, limit int) ([]Job, error) {
 	for rows.Next() {
 		var (
 			id, typ, st, payload string
-			created, updated int64
-			errStr *string
+			created, updated     int64
+			errStr               *string
 		)
 		if err := rows.Scan(&id, &typ, &st, &created, &updated, &payload, &errStr); err != nil {
 			return nil, err
