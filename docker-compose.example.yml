@@ -1,0 +1,24 @@
+services:
+  edrmount:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: EDRmount
+    environment:
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    volumes:
+      # Appdata/config
+      - /mnt/user/appdata/EDRmount:/config
+      # Host data root (library/inbox/mount)
+      - /mnt/user/Nubes/USENET:/host:rshared
+      # Cache (fast path)
+      - /mnt/vfs/EDRmount:/cache
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    restart: unless-stopped
