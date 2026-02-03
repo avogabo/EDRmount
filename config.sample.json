@@ -9,5 +9,19 @@
   },
   "runner": {
     "mode": "stub"
+  },
+  "ngpost": {
+    "enabled": false,
+    "host": "ssl-news.provider.com",
+    "port": 563,
+    "ssl": true,
+    "user": "",
+    "pass": "",
+    "connections": 20,
+    "threads": 2,
+    "groups": "alt.binaries.test",
+    "output_dir": "/host/inbox/nzb",
+    "tmp_dir": "",
+    "obfuscate": false
   }
 }

@@ -26,6 +26,8 @@ type Config struct {
 	Server Server `json:"server"`
 	Paths  Paths  `json:"paths"`
 	Runner Runner `json:"runner"`
+
+	NgPost NgPost `json:"ngpost"`
 }
 
 func Default() Config {
@@ -39,6 +41,7 @@ func Default() Config {
 			CacheDir:   "/cache",
 		},
 		Runner: Runner{Mode: "stub"},
+		NgPost: NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb"},
 	}
 }
 

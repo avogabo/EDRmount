@@ -45,6 +45,7 @@ func main() {
 
 		r := runner.New(srvJobs)
 		r.Mode = cfg.Runner.Mode
+		r.NgPost = cfg.NgPost
 		go r.Run(ctx)
 	}
 
