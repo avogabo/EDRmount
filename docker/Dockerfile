@@ -11,7 +11,7 @@ COPY --from=build /out/edrmount /usr/local/bin/edrmount
 
 # runtime dirs
 RUN mkdir -p /config /host /cache
-EXPOSE 8080
+EXPOSE 1516
 
 # FUSE requires these at runtime:
 # - /dev/fuse

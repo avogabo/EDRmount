@@ -7,7 +7,7 @@ services:
     environment:
       - PORT=8080
     ports:
-      - "8080:8080"
+      - "1516:1516"
     volumes:
       # Appdata/config
       - /mnt/user/appdata/EDRmount:/config

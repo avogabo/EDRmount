@@ -25,7 +25,7 @@ type Config struct {
 
 func Default() Config {
 	return Config{
-		Server: Server{Addr: ":8080"},
+		Server: Server{Addr: ":1516"},
 		Paths: Paths{
 			HostRoot:   "/host",
 			MountPoint: "/host/mount",

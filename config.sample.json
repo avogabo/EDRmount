@@ -1,5 +1,5 @@
 {
-  "server": { "addr": ":8080" },
+  "server": { "addr": ":1516" },
   "paths": {
     "host_root": "/host",
     "mount_point": "/host/mount",
