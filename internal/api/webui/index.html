@@ -29,7 +29,7 @@
     </div>
 
     <div class="card">
-      <h2>Provider / ngpost</h2>
+      <h2>Upload provider / ngpost</h2>
       <div class="row">
         <label><input type="checkbox" id="ng_enabled" /> Enable ngpost</label>
       </div>
@@ -60,6 +60,31 @@
         <span class="muted" id="provStatus"></span>
       </div>
       <div class="muted">Test checks TCP/TLS connectivity only (auth test comes later).</div>
+    </div>
+
+    <div class="card">
+      <h2>Download provider (NNTP)</h2>
+      <div class="row">
+        <label><input type="checkbox" id="dl_enabled" /> Enable download provider</label>
+      </div>
+      <div class="row">
+        <label>Host <input id="dl_host" style="min-width:320px" /></label>
+        <label>Port <input id="dl_port" style="width:90px" type="number" /></label>
+        <label><input type="checkbox" id="dl_ssl" /> SSL</label>
+      </div>
+      <div class="row">
+        <label>User <input id="dl_user" style="min-width:220px" /></label>
+        <label>Pass <input id="dl_pass" style="min-width:220px" type="password" placeholder="(leave blank to keep)" /></label>
+      </div>
+      <div class="row">
+        <label>Connections <input id="dl_connections" style="width:90px" type="number" /></label>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnTestDownload">Test connectivity</button>
+        <button class="btn" id="btnSaveDownload">Save download provider</button>
+        <span class="muted" id="dlStatus"></span>
+      </div>
+      <div class="muted">Connectivity test only (auth test comes later).</div>
     </div>
 
     <div class="card">
@@ -118,5 +143,6 @@
   </div>
 
   <script src="/webui/app.js"></script>
+  <script src="/webui/download.js"></script>
 </body>
 </html>

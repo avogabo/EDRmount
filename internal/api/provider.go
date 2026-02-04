@@ -74,16 +74,20 @@ func (s *Server) registerProviderRoutes() {
 		_ = json.NewEncoder(w).Encode(providerTestResponse{OK: true, Message: "connect ok", LatencyMs: lat})
 	})
 
-	// Convenience endpoint: returns current ngpost config (masked)
-	s.mux.HandleFunc("/api/v1/ngpost", func(w http.ResponseWriter, r *http.Request) {
+	// Convenience endpoint: returns current ngpost + download config (masked)
+	s.mux.HandleFunc("/api/v1/providers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method {
 		case http.MethodGet:
-			masked := s.cfg.NgPost
-			if masked.Pass != "" {
-				masked.Pass = "***"
+			ng := s.cfg.NgPost
+			dl := s.cfg.Download
+			if ng.Pass != "" {
+				ng.Pass = "***"
 			}
-			_ = json.NewEncoder(w).Encode(masked)
+			if dl.Pass != "" {
+				dl.Pass = "***"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"ngpost": ng, "download": dl})
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}

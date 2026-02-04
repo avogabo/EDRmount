@@ -27,7 +27,8 @@ type Config struct {
 	Paths  Paths  `json:"paths"`
 	Runner Runner `json:"runner"`
 
-	NgPost NgPost `json:"ngpost"`
+	NgPost   NgPost           `json:"ngpost"`
+	Download DownloadProvider `json:"download"`
 }
 
 func Default() Config {
@@ -40,8 +41,9 @@ func Default() Config {
 			MediaInbox: "/host/inbox/media",
 			CacheDir:   "/cache",
 		},
-		Runner: Runner{Mode: "stub"},
-		NgPost: NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb"},
+		Runner:   Runner{Mode: "stub"},
+		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb"},
+		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20},
 	}
 }
 

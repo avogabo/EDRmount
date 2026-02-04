@@ -147,7 +147,7 @@ async function loadConfigEditor() {
   ta.value = fmtJSON(cfg);
   status.textContent = '';
 
-  // Fill provider form (ngpost)
+  // Fill upload provider form (ngpost)
   const n = (cfg.ngpost || {});
   document.getElementById('ng_enabled').checked = !!n.enabled;
   document.getElementById('ng_host').value = n.host || '';
@@ -161,6 +161,16 @@ async function loadConfigEditor() {
   document.getElementById('ng_output_dir').value = n.output_dir || '/host/inbox/nzb';
   document.getElementById('ng_tmp_dir').value = n.tmp_dir || '';
   document.getElementById('ng_obfuscate').checked = !!n.obfuscate;
+
+  // Fill download provider form
+  const d = (cfg.download || {});
+  document.getElementById('dl_enabled').checked = !!d.enabled;
+  document.getElementById('dl_host').value = d.host || '';
+  document.getElementById('dl_port').value = d.port || 563;
+  document.getElementById('dl_ssl').checked = (d.ssl !== false);
+  document.getElementById('dl_user').value = d.user || '';
+  document.getElementById('dl_pass').value = (d.pass && d.pass !== '***') ? d.pass : '';
+  document.getElementById('dl_connections').value = d.connections || 20;
 }
 
 async function saveConfigEditor() {
@@ -264,5 +274,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnRefreshCatalog').onclick = () => refreshCatalog().catch(err => alert(err));
   document.getElementById('btnSaveProvider').onclick = () => saveProviderForm().catch(err => alert(err));
   document.getElementById('btnTestProvider').onclick = () => testProvider().catch(err => alert(err));
+  document.getElementById('btnSaveDownload').onclick = () => saveDownloadProvider().catch(err => alert(err));
+  document.getElementById('btnTestDownload').onclick = () => testDownloadProvider().catch(err => alert(err));
   boot().catch(err => alert(err));
 });
