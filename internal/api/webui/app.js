@@ -75,6 +75,36 @@ async function refreshJobs() {
   box.appendChild(table);
 }
 
+async function refreshCatalog() {
+  const box = document.getElementById('catalog');
+  box.innerHTML = '';
+  const items = await apiGet('/api/v1/catalog/imports');
+
+  const table = el('table', { class: 'tbl' });
+  const thead = el('thead');
+  thead.appendChild(el('tr', {}, [
+    el('th', { text: 'import id' }),
+    el('th', { text: 'nzb path' }),
+    el('th', { text: 'files' }),
+    el('th', { text: 'bytes' }),
+    el('th', { text: 'time' }),
+  ]));
+  table.appendChild(thead);
+
+  const tbody = el('tbody');
+  for (const it of items) {
+    const tr = el('tr');
+    tr.appendChild(el('td', { class: 'mono', text: it.id.slice(0, 8) }));
+    tr.appendChild(el('td', { class: 'mono', text: it.path }));
+    tr.appendChild(el('td', { text: String(it.files_count) }));
+    tr.appendChild(el('td', { class: 'mono', text: String(it.total_bytes) }));
+    tr.appendChild(el('td', { class: 'mono', text: (it.imported_at || '').replace('T', ' ').replace('Z', '') }));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  box.appendChild(table);
+}
+
 async function loadConfigEditor() {
   const ta = document.getElementById('config');
   const status = document.getElementById('configStatus');
@@ -166,13 +196,16 @@ async function testProvider() {
 async function boot() {
   await loadConfigEditor();
   await refreshJobs();
+  await refreshCatalog();
   setInterval(() => refreshJobs().catch(() => {}), 2000);
+  setInterval(() => refreshCatalog().catch(() => {}), 5000);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnReloadConfig').onclick = () => loadConfigEditor().catch(err => alert(err));
   document.getElementById('btnSaveConfig').onclick = () => saveConfigEditor().catch(err => alert(err));
   document.getElementById('btnRefreshJobs').onclick = () => refreshJobs().catch(err => alert(err));
+  document.getElementById('btnRefreshCatalog').onclick = () => refreshCatalog().catch(err => alert(err));
   document.getElementById('btnSaveProvider').onclick = () => saveProviderForm().catch(err => alert(err));
   document.getElementById('btnTestProvider').onclick = () => testProvider().catch(err => alert(err));
   boot().catch(err => alert(err));
