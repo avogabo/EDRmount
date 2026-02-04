@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/jobs"
@@ -64,6 +65,19 @@ func (i *Importer) ImportNZB(ctx context.Context, jobID string, path string) (fi
 			importID, idx, nf.Subject, nf.Poster, nf.Date, groupsToJSON(nf.Groups), len(nf.Segments), fb)
 		if err != nil {
 			return 0, 0, err
+		}
+
+		// segments
+		for _, seg := range nf.Segments {
+			mid := strings.TrimSpace(seg.ID)
+			if mid == "" {
+				continue
+			}
+			_, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_segments(import_id,file_idx,number,bytes,message_id) VALUES(?,?,?,?,?)`,
+				importID, idx, seg.Number, seg.Bytes, mid)
+			if err != nil {
+				return 0, 0, err
+			}
 		}
 	}
 

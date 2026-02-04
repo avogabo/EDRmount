@@ -84,6 +84,16 @@ func (d *DB) migrate() error {
 			PRIMARY KEY(import_id, idx)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_nzb_files_import ON nzb_files(import_id);`,
+
+		`CREATE TABLE IF NOT EXISTS nzb_segments (
+			import_id TEXT NOT NULL,
+			file_idx INTEGER NOT NULL,
+			number INTEGER NOT NULL,
+			bytes INTEGER NOT NULL,
+			message_id TEXT NOT NULL,
+			PRIMARY KEY(import_id, file_idx, number)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_nzb_segments_file ON nzb_segments(import_id, file_idx);`,
 	}
 	for _, s := range stmts {
 		if _, err := d.SQL.Exec(s); err != nil {
