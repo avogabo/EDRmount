@@ -52,7 +52,9 @@ func (s *Streamer) EnsureFile(ctx context.Context, importID string, fileIdx int,
 	}
 
 	// Load segments
-	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT number,bytes,message_id FROM nzb_segments WHERE import_id=? AND file_idx=? ORDER BY number ASC`, importID, fileIdx)
+	qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
+	defer qcancel()
+	rows, err := s.jobs.DB().SQL.QueryContext(qctx, `SELECT number,bytes,message_id FROM nzb_segments WHERE import_id=? AND file_idx=? ORDER BY number ASC`, importID, fileIdx)
 	if err != nil {
 		return "", err
 	}
