@@ -118,8 +118,24 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			args = append(args, "-u", r.NgPost.User, "-p", r.NgPost.Pass, "--disp_progress", "files")
 
 			_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("ngpost: %s %s", r.NgPostPath, strings.Join(args[:min(10, len(args))], " ")))
+
+			// ngpost sometimes auto-renames the NZB if the requested output already exists.
+			// We capture the actual nzb path from its output (line like: "nzb file: /path/file_2.nzb").
+			actualNZB := ""
 			err := runCommand(ctx, func(line string) {
-				_ = r.jobs.AppendLog(ctx, j.ID, sanitizeLine(line, r.NgPost.Pass))
+				clean := sanitizeLine(line, r.NgPost.Pass)
+				_ = r.jobs.AppendLog(ctx, j.ID, clean)
+				l := strings.ToLower(clean)
+				if strings.Contains(l, "nzb file:") {
+					// Keep original case for path; split on ':' once.
+					parts := strings.SplitN(clean, ":", 2)
+					if len(parts) == 2 {
+						p := strings.TrimSpace(parts[1])
+						if strings.HasSuffix(strings.ToLower(p), ".nzb") {
+							actualNZB = p
+						}
+					}
+				}
 			}, r.NgPostPath, args...)
 			if err != nil {
 				msg := err.Error()
@@ -128,8 +144,12 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				return
 			}
 			_ = r.jobs.SetDone(ctx, j.ID)
-			// Chain import
-			_, _ = r.jobs.Enqueue(ctx, jobs.TypeImport, map[string]string{"path": outNZB})
+			// Chain import (use actual NZB if ngpost renamed it)
+			importPath := outNZB
+			if actualNZB != "" {
+				importPath = actualNZB
+			}
+			_, _ = r.jobs.Enqueue(ctx, jobs.TypeImport, map[string]string{"path": importPath})
 			return
 		}
 		if r.NgPost.Enabled {
