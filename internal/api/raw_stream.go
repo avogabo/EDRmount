@@ -65,7 +65,7 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve bytes
+	// Serve bytes (with optional Range)
 	f, err := os.Open(localPath)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -74,10 +74,36 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	fi, _ := f.Stat()
-	w.Header().Set("Content-Type", "application/octet-stream")
-	if fi != nil {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", fi.Size()))
+	if fi == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "stat failed"})
+		return
 	}
-	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, f)
+	size := fi.Size()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	br, perr := parseRange(r.Header.Get("Range"), size)
+	if perr != nil {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+	if br == nil {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, f)
+		return
+	}
+
+	length := (br.End - br.Start) + 1
+	if _, err := f.Seek(br.Start, 0); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
+	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
+	w.WriteHeader(http.StatusPartialContent)
+	_, _ = io.CopyN(w, f, length)
 }
