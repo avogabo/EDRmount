@@ -115,8 +115,23 @@ async function refreshCatalog() {
       }
     };
 
+    const btnRaw = el('button', { class: 'btn', text: 'raw' });
+    btnRaw.onclick = async () => {
+      const out = document.getElementById('rawItems');
+      out.textContent = 'Loading raw view...';
+      try {
+        const items = await apiGet(`/api/v1/raw/imports/${it.id}`);
+        out.textContent = items.map(x => {
+          return `${x.filename}  bytes=${x.bytes} segs=${x.segments}\n${x.path}`;
+        }).join('\n\n');
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    };
+
     const actions = el('td');
     actions.appendChild(btnFiles);
+    actions.appendChild(btnRaw);
     tr.appendChild(actions);
 
     tbody.appendChild(tr);
