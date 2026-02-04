@@ -33,6 +33,7 @@ type segRow struct {
 }
 
 func (s *Streamer) EnsureFile(ctx context.Context, importID string, fileIdx int, filename string) (string, error) {
+	log.Printf("raw: ensure start import=%s fileIdx=%d filename=%s", importID, fileIdx, filename)
 	// cache path
 	base := filepath.Join(s.cacheDir, "raw", importID)
 	if err := os.MkdirAll(base, 0o755); err != nil {
@@ -70,14 +71,19 @@ func (s *Streamer) EnsureFile(ctx context.Context, importID string, fileIdx int,
 	}
 	sort.Slice(segs, func(i, j int) bool { return segs[i].Number < segs[j].Number })
 
+	log.Printf("raw: dialing nntp host=%s port=%d ssl=%v", s.cfg.Host, s.cfg.Port, s.cfg.SSL)
 	cl, err := nntp.Dial(ctx, nntp.Config{Host: s.cfg.Host, Port: s.cfg.Port, SSL: s.cfg.SSL, User: s.cfg.User, Pass: s.cfg.Pass, Timeout: 15 * time.Second})
 	if err != nil {
+		log.Printf("raw: dial error: %v", err)
 		return "", err
 	}
 	defer cl.Close()
+	log.Printf("raw: auth...")
 	if err := cl.Auth(); err != nil {
+		log.Printf("raw: auth error: %v", err)
 		return "", err
 	}
+	log.Printf("raw: auth ok")
 
 	// Write temp then rename
 	tmp := outPath + ".part"

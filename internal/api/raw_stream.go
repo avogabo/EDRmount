@@ -55,7 +55,7 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir)
 	localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)

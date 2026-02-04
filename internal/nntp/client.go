@@ -43,7 +43,8 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	var err error
 	if cfg.SSL {
 		tlsCfg := &tls.Config{ServerName: cfg.Host}
-		c, err = tls.DialWithDialer(d, "tcp", addr, tlsCfg)
+		td := &tls.Dialer{NetDialer: d, Config: tlsCfg}
+		c, err = td.DialContext(ctx, "tcp", addr)
 	} else {
 		c, err = d.DialContext(ctx, "tcp", addr)
 	}
