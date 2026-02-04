@@ -126,14 +126,10 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				clean := sanitizeLine(line, r.NgPost.Pass)
 				_ = r.jobs.AppendLog(ctx, j.ID, clean)
 				l := strings.ToLower(clean)
-				if strings.Contains(l, "nzb file:") {
-					// Keep original case for path; split on ':' once.
-					parts := strings.SplitN(clean, ":", 2)
-					if len(parts) == 2 {
-						p := strings.TrimSpace(parts[1])
-						if strings.HasSuffix(strings.ToLower(p), ".nzb") {
-							actualNZB = p
-						}
+				if idx := strings.Index(l, "nzb file:"); idx >= 0 {
+					p := strings.TrimSpace(clean[idx+len("nzb file:"):])
+					if strings.HasSuffix(strings.ToLower(p), ".nzb") {
+						actualNZB = p
 					}
 				}
 			}, r.NgPostPath, args...)
