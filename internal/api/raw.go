@@ -18,9 +18,10 @@ type rawItem struct {
 
 func (s *Server) registerRawRoutes() {
 	// GET /api/v1/raw/imports/{id}
+	// GET /api/v1/raw/imports/{id}/files/{filename}
 	s.mux.HandleFunc("/api/v1/raw/imports/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		if s.jobs == nil {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "db not configured"})
 			return
@@ -29,6 +30,14 @@ func (s *Server) registerRawRoutes() {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+
+		// Stream variant
+		if strings.Contains(r.URL.Path, "/files/") {
+			s.handleRawFileStream(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		importID := strings.TrimPrefix(r.URL.Path, "/api/v1/raw/imports/")
 		importID = strings.Trim(importID, "/")
 		if importID == "" {
