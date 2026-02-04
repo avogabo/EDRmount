@@ -88,6 +88,7 @@ async function refreshCatalog() {
     el('th', { text: 'files' }),
     el('th', { text: 'bytes' }),
     el('th', { text: 'time' }),
+    el('th', { text: 'actions' }),
   ]));
   table.appendChild(thead);
 
@@ -99,6 +100,25 @@ async function refreshCatalog() {
     tr.appendChild(el('td', { text: String(it.files_count) }));
     tr.appendChild(el('td', { class: 'mono', text: String(it.total_bytes) }));
     tr.appendChild(el('td', { class: 'mono', text: (it.imported_at || '').replace('T', ' ').replace('Z', '') }));
+
+    const btnFiles = el('button', { class: 'btn', text: 'files' });
+    btnFiles.onclick = async () => {
+      const out = document.getElementById('catalogFiles');
+      out.textContent = 'Loading files...';
+      try {
+        const files = await apiGet(`/api/v1/catalog/imports/${it.id}/files`);
+        out.textContent = files.map(f => {
+          return `${f.idx}: bytes=${f.total_bytes} segs=${f.segments_count}\n${f.subject}`;
+        }).join('\n\n');
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    };
+
+    const actions = el('td');
+    actions.appendChild(btnFiles);
+    tr.appendChild(actions);
+
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);

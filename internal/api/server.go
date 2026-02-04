@@ -181,6 +181,7 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerJobLogRoutes()
 	s.registerProviderRoutes()
 	s.registerCatalogRoutes()
+	s.registerCatalogFileRoutes()
 
 	// UI static (placeholder for now)
 	ui := http.FS(uiFS)
