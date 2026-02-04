@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
+	"github.com/gaby/EDRmount/internal/importer"
 	"github.com/gaby/EDRmount/internal/jobs"
 )
 
@@ -66,22 +67,15 @@ func (r *Runner) runImport(ctx context.Context, j *jobs.Job) {
 	}
 	_ = json.Unmarshal(j.Payload, &p)
 
-	if r.Mode == "exec" {
-		_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("exec import (dev): %s", p.Path))
-		err := runCommand(ctx, func(line string) {
-			_ = r.jobs.AppendLog(ctx, j.ID, line)
-		}, "bash", "-lc", fmt.Sprintf("echo importing '%s'; sleep 1; echo done import", p.Path))
-		if err != nil {
-			msg := err.Error()
-			_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-			_ = r.jobs.SetFailed(ctx, j.ID, msg)
-			return
-		}
-		_ = r.jobs.SetDone(ctx, j.ID)
+	imp := importer.New(r.jobs)
+	files, bytes, err := imp.ImportNZB(ctx, j.ID, p.Path)
+	if err != nil {
+		msg := err.Error()
+		_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+		_ = r.jobs.SetFailed(ctx, j.ID, msg)
 		return
 	}
-
-	_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("(stub) would import NZB: %s", p.Path))
+	_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("imported NZB: files=%d total_bytes=%d", files, bytes))
 	_ = r.jobs.SetDone(ctx, j.ID)
 }
 

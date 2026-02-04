@@ -62,6 +62,28 @@ func (d *DB) migrate() error {
 			mtime INTEGER NOT NULL,
 			seen_at INTEGER NOT NULL
 		);`,
+
+		`CREATE TABLE IF NOT EXISTS nzb_imports (
+			id TEXT PRIMARY KEY,
+			path TEXT NOT NULL,
+			imported_at INTEGER NOT NULL,
+			files_count INTEGER NOT NULL,
+			total_bytes INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_nzb_imports_time ON nzb_imports(imported_at);`,
+
+		`CREATE TABLE IF NOT EXISTS nzb_files (
+			import_id TEXT NOT NULL,
+			idx INTEGER NOT NULL,
+			subject TEXT NOT NULL,
+			poster TEXT,
+			date INTEGER,
+			groups_json TEXT NOT NULL,
+			segments_count INTEGER NOT NULL,
+			total_bytes INTEGER NOT NULL,
+			PRIMARY KEY(import_id, idx)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_nzb_files_import ON nzb_files(import_id);`,
 	}
 	for _, s := range stmts {
 		if _, err := d.SQL.Exec(s); err != nil {
