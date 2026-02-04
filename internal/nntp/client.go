@@ -25,6 +25,10 @@ type Client struct {
 	r    *bufio.Reader
 }
 
+func (c *Client) setDeadline() {
+	_ = c.conn.SetDeadline(time.Now().Add(c.cfg.Timeout))
+}
+
 func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.Port == 0 {
 		cfg.Port = 119
@@ -48,6 +52,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	}
 	cl := &Client{cfg: cfg, conn: c, r: bufio.NewReaderSize(c, 1024*1024)}
 	// read greeting
+	cl.setDeadline()
 	line, err := cl.readLine()
 	if err != nil {
 		_ = c.Close()
@@ -66,6 +71,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) readLine() (string, error) {
+	c.setDeadline()
 	line, err := c.r.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -75,6 +81,7 @@ func (c *Client) readLine() (string, error) {
 }
 
 func (c *Client) send(cmd string) error {
+	c.setDeadline()
 	_, err := c.conn.Write([]byte(cmd + "\r\n"))
 	return err
 }
@@ -113,6 +120,7 @@ func (c *Client) Auth() error {
 // BodyByMessageID fetches the body lines (dot-terminated) for a message-id.
 // Returns raw lines (without CRLF), with dot-stuffing already unescaped.
 func (c *Client) BodyByMessageID(messageID string) ([]string, error) {
+	c.setDeadline()
 	if !strings.HasPrefix(messageID, "<") {
 		messageID = "<" + messageID
 	}

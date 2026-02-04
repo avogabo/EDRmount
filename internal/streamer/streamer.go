@@ -3,10 +3,12 @@ package streamer
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
@@ -68,7 +70,7 @@ func (s *Streamer) EnsureFile(ctx context.Context, importID string, fileIdx int,
 	}
 	sort.Slice(segs, func(i, j int) bool { return segs[i].Number < segs[j].Number })
 
-	cl, err := nntp.Dial(ctx, nntp.Config{Host: s.cfg.Host, Port: s.cfg.Port, SSL: s.cfg.SSL, User: s.cfg.User, Pass: s.cfg.Pass})
+	cl, err := nntp.Dial(ctx, nntp.Config{Host: s.cfg.Host, Port: s.cfg.Port, SSL: s.cfg.SSL, User: s.cfg.User, Pass: s.cfg.Pass, Timeout: 15 * time.Second})
 	if err != nil {
 		return "", err
 	}
@@ -87,11 +89,13 @@ func (s *Streamer) EnsureFile(ctx context.Context, importID string, fileIdx int,
 	defer f.Close()
 
 	for _, seg := range segs {
+		log.Printf("raw: import=%s fileIdx=%d seg=%d fetching", importID, fileIdx, seg.Number)
 		lines, err := cl.BodyByMessageID(seg.MessageID)
 		if err != nil {
 			return "", err
 		}
 		data, _, _, _, err := yenc.DecodePart(lines)
+		log.Printf("raw: import=%s fileIdx=%d seg=%d decoded=%d bytes", importID, fileIdx, seg.Number, len(data))
 		if err != nil {
 			return "", err
 		}

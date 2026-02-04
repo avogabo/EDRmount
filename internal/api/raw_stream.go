@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gaby/EDRmount/internal/streamer"
 	"github.com/gaby/EDRmount/internal/subject"
@@ -53,8 +55,10 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
 	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir)
-	localPath, err := st.EnsureFile(r.Context(), importID, fileIdx, filename)
+	localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
