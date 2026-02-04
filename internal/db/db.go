@@ -25,7 +25,10 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.SetMaxOpenConns(1) // sqlite (single writer) + simplifies concurrency early.
+	// Allow concurrent readers while keeping WAL + busy_timeout.
+	// modernc.org/sqlite is fine with multiple conns; writes will serialize.
+	s.SetMaxOpenConns(4)
+	s.SetMaxIdleConns(4)
 
 	d := &DB{SQL: s}
 	if err := d.migrate(); err != nil {
