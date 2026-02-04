@@ -16,7 +16,6 @@ import (
 )
 
 func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/raw/imports/")
 	parts := strings.SplitN(path, "/files/", 2)
 	if len(parts) != 2 {
@@ -30,56 +29,46 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find matching file_idx by subject-derived filename
-	rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT idx,subject FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir)
+
+	// Find matching file_idx by subject-derived filename and also get total bytes.
+	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT idx,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	defer rows.Close()
 	fileIdx := -1
+	var size int64
 	for rows.Next() {
 		var idx int
 		var subj string
-		_ = rows.Scan(&idx, &subj)
+		var bytes int64
+		_ = rows.Scan(&idx, &subj, &bytes)
 		fn, ok := subject.FilenameFromSubject(subj)
 		if ok && fn == filename {
 			fileIdx = idx
+			size = bytes
 			break
 		}
 	}
 	if fileIdx < 0 {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "file not found in import"})
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-	defer cancel()
-	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir)
-	localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
-	if err != nil {
+	if size <= 0 {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid file size"})
 		return
 	}
 
-	// Serve bytes (with optional Range)
-	f, err := os.Open(localPath)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-	defer f.Close()
-	fi, _ := f.Stat()
-	if fi == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "stat failed"})
-		return
-	}
-	size := fi.Size()
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Accept-Ranges", "bytes")
 
@@ -89,21 +78,35 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 		return
 	}
+
+	// No Range: ensure full file cached and serve it.
 	if br == nil {
+		localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		f, err := os.Open(localPath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		defer f.Close()
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.Copy(w, f)
 		return
 	}
 
+	// Range: lazy streaming via per-segment cache (does not require full file cache).
 	length := (br.End - br.Start) + 1
-	if _, err := f.Seek(br.Start, 0); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
 	w.WriteHeader(http.StatusPartialContent)
-	_, _ = io.CopyN(w, f, length)
+	const prefetchSegs = 2
+	_ = st.StreamRange(ctx, importID, fileIdx, filename, br.Start, br.End, w, prefetchSegs)
 }
