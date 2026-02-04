@@ -217,8 +217,9 @@ async function boot() {
   await loadConfigEditor();
   await refreshJobs();
   await refreshCatalog();
-  setInterval(() => refreshJobs().catch(() => {}), 2000);
-  setInterval(() => refreshCatalog().catch(() => {}), 5000);
+  // Auto-refresh, but slow enough to not fight the user.
+  setInterval(() => refreshJobs().catch(() => {}), 8000);
+  setInterval(() => refreshCatalog().catch(() => {}), 15000);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
