@@ -213,13 +213,33 @@ async function testProvider() {
   }
 }
 
+function shouldAutoRefresh() {
+  const cb = document.getElementById('autoRefresh');
+  if (!cb) return true;
+  if (!cb.checked) return false;
+
+  // If the user is typing/focused in a field, don’t fight them.
+  const a = document.activeElement;
+  if (!a) return true;
+  const tag = (a.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return false;
+  // If focus is inside logs panes, pause refresh too.
+  const ids = new Set(['logs', 'catalogFiles']);
+  if (a.id && ids.has(a.id)) return false;
+  return true;
+}
+
 async function boot() {
   await loadConfigEditor();
   await refreshJobs();
   await refreshCatalog();
   // Auto-refresh, but slow enough to not fight the user.
-  setInterval(() => refreshJobs().catch(() => {}), 8000);
-  setInterval(() => refreshCatalog().catch(() => {}), 15000);
+  setInterval(() => {
+    if (shouldAutoRefresh()) refreshJobs().catch(() => {});
+  }, 8000);
+  setInterval(() => {
+    if (shouldAutoRefresh()) refreshCatalog().catch(() => {});
+  }, 15000);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
