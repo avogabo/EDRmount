@@ -8,13 +8,16 @@ import (
 
 	"github.com/gaby/EDRmount/internal/api"
 	"github.com/gaby/EDRmount/internal/config"
+	"github.com/gaby/EDRmount/internal/fusefs"
 	"github.com/gaby/EDRmount/internal/runner"
 	"github.com/gaby/EDRmount/internal/watch"
 )
 
 func main() {
 	var cfgPath string
+	var enableFuse bool
 	flag.StringVar(&cfgPath, "config", "/config/config.json", "path to config file (json)")
+	flag.BoolVar(&enableFuse, "fuse", false, "enable FUSE raw mount at <mount_point>/raw")
 	flag.Parse()
 
 	cfg, err := config.Load(cfgPath)
@@ -47,6 +50,14 @@ func main() {
 		r.Mode = cfg.Runner.Mode
 		r.NgPost = cfg.NgPost
 		go r.Run(ctx)
+
+		if enableFuse {
+			if _, err := fusefs.MountRaw(ctx, cfg, srvJobs); err != nil {
+				log.Printf("FUSE mount failed: %v", err)
+			} else {
+				log.Printf("FUSE raw mounted at %s/raw", cfg.Paths.MountPoint)
+			}
+		}
 	}
 
 	log.Printf("EDRmount listening on %s", cfg.Server.Addr)

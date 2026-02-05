@@ -2,13 +2,16 @@ package fusefs
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-)
 
-// This package will implement the raw/library mount.
-// For now, it only validates that FUSE deps are wired correctly.
+	"github.com/gaby/EDRmount/internal/config"
+	"github.com/gaby/EDRmount/internal/jobs"
+)
 
 type MountOptions struct {
 	Mountpoint string
@@ -27,10 +30,15 @@ func (m *Mount) Close() error {
 }
 
 func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, error) {
-	_ = ctx
-	_ = filesystem
+	if opts.Mountpoint == "" {
+		return nil, fmt.Errorf("mountpoint required")
+	}
+	if err := os.MkdirAll(opts.Mountpoint, 0o755); err != nil {
+		return nil, err
+	}
 	c, err := fuse.Mount(
 		opts.Mountpoint,
+		fuse.ReadOnly(),
 		fuse.FSName("edrmount"),
 		fuse.Subtype("edrmount"),
 	)
@@ -38,6 +46,18 @@ func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, er
 		return nil, err
 	}
 	m := &Mount{conn: c}
-	// NOTE: actual fs.Serve wiring comes next.
+	go func() {
+		_ = fs.Serve(c, filesystem)
+	}()
+	go func() {
+		<-ctx.Done()
+		_ = c.Close()
+	}()
 	return m, nil
+}
+
+func MountRaw(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
+	mp := filepath.Join(cfg.Paths.MountPoint, "raw")
+	rfs := &RawFS{Cfg: cfg, Jobs: jobs}
+	return Start(ctx, MountOptions{Mountpoint: mp}, rfs)
 }
