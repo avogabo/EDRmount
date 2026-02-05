@@ -50,12 +50,30 @@ func (i *Importer) ImportNZB(ctx context.Context, jobID string, path string) (fi
 
 	// Persist import summary + per-file rows
 	db := i.jobs.DB().SQL
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
 	now := time.Now().Unix()
-	_, err = db.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_imports(id,path,imported_at,files_count,total_bytes) VALUES(?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_imports(id,path,imported_at,files_count,total_bytes) VALUES(?,?,?,?,?)`,
 		importID, path, now, files, totalBytes)
 	if err != nil {
 		return 0, 0, err
 	}
+
+	stmtFile, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO nzb_files(import_id,idx,subject,filename,poster,date,groups_json,segments_count,total_bytes) VALUES(?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer stmtFile.Close()
+	stmtSeg, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO nzb_segments(import_id,file_idx,number,bytes,message_id) VALUES(?,?,?,?,?)`)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer stmtSeg.Close()
 
 	for idx, nf := range doc.Files {
 		var fb int64
@@ -66,7 +84,7 @@ func (i *Importer) ImportNZB(ctx context.Context, jobID string, path string) (fi
 		if !ok || fn == "" {
 			fn = fmt.Sprintf("file_%04d.bin", idx)
 		}
-		_, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_files(import_id,idx,subject,filename,poster,date,groups_json,segments_count,total_bytes) VALUES(?,?,?,?,?,?,?,?,?)`,
+		_, err := stmtFile.ExecContext(ctx,
 			importID, idx, nf.Subject, fn, nf.Poster, nf.Date, groupsToJSON(nf.Groups), len(nf.Segments), fb)
 		if err != nil {
 			return 0, 0, err
@@ -78,7 +96,7 @@ func (i *Importer) ImportNZB(ctx context.Context, jobID string, path string) (fi
 			if mid == "" {
 				continue
 			}
-			_, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_segments(import_id,file_idx,number,bytes,message_id) VALUES(?,?,?,?,?)`,
+			_, err := stmtSeg.ExecContext(ctx,
 				importID, idx, seg.Number, seg.Bytes, mid)
 			if err != nil {
 				return 0, 0, err
@@ -86,5 +104,8 @@ func (i *Importer) ImportNZB(ctx context.Context, jobID string, path string) (fi
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
 	return files, totalBytes, nil
 }
