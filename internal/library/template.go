@@ -38,16 +38,18 @@ func GuessFromFilename(name string) Guess {
 		g.Quality = "4K"
 	}
 
-	if m := reSxxExx.FindStringSubmatch(stem); len(m) == 3 {
+	if loc := reSxxExx.FindStringSubmatchIndex(stem); len(loc) >= 6 {
 		g.IsSeries = true
-		g.Season, _ = strconv.Atoi(m[1])
-		g.Episode, _ = strconv.Atoi(m[2])
+		g.Season, _ = strconv.Atoi(stem[loc[2]:loc[3]])
+		g.Episode, _ = strconv.Atoi(stem[loc[4]:loc[5]])
+		stem = strings.TrimSpace(stem[:loc[0]])
 	}
 	if !g.IsSeries {
-		if m := reNxxXxx.FindStringSubmatch(stem); len(m) == 3 {
+		if loc := reNxxXxx.FindStringSubmatchIndex(stem); len(loc) >= 6 {
 			g.IsSeries = true
-			g.Season, _ = strconv.Atoi(m[1])
-			g.Episode, _ = strconv.Atoi(m[2])
+			g.Season, _ = strconv.Atoi(stem[loc[2]:loc[3]])
+			g.Episode, _ = strconv.Atoi(stem[loc[4]:loc[5]])
+			stem = strings.TrimSpace(stem[:loc[0]])
 		}
 	}
 
@@ -55,8 +57,9 @@ func GuessFromFilename(name string) Guess {
 		g.Year, _ = strconv.Atoi(ym[1])
 	}
 
-	// crude title cleanup: split on common separators and drop trailing tokens
+	// crude title cleanup: normalize separators
 	clean := strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(stem)
+	clean = strings.Join(strings.Fields(clean), " ")
 	clean = strings.TrimSpace(clean)
 	g.Title = clean
 	return g
