@@ -65,8 +65,8 @@ func MountRaw(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount,
 	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, rfs)
 }
 
-func MountLibrary(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
-	mp := filepath.Join(cfg.Paths.MountPoint, "library")
+func MountLibraryAuto(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
+	mp := filepath.Join(cfg.Paths.MountPoint, "library-auto")
 	lfs := &LibraryFS{Cfg: cfg, Jobs: jobs}
 	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, lfs)
 }
