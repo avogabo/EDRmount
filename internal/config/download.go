@@ -9,5 +9,6 @@ type DownloadProvider struct {
 	User string `json:"user"`
 	Pass string `json:"pass"`
 
-	Connections int `json:"connections"`
+	Connections      int `json:"connections"`
+	PrefetchSegments int `json:"prefetch_segments"`
 }

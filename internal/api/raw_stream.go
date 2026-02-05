@@ -107,6 +107,9 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
 	w.WriteHeader(http.StatusPartialContent)
-	const prefetchSegs = 2
+	prefetchSegs := s.cfg.Download.PrefetchSegments
+	if prefetchSegs < 0 {
+		prefetchSegs = 0
+	}
 	_ = st.StreamRange(ctx, importID, fileIdx, filename, br.Start, br.End, w, prefetchSegs)
 }

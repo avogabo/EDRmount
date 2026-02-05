@@ -47,7 +47,7 @@ func Default() Config {
 		},
 		Runner:   Runner{Mode: "stub"},
 		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb"},
-		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20},
+		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 2},
 	}
 }
 

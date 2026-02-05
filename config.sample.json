@@ -1,5 +1,7 @@
 {
-  "server": { "addr": ":1516" },
+  "server": {
+    "addr": ":1516"
+  },
   "paths": {
     "host_root": "/host",
     "mount_point": "/host/mount",
@@ -32,6 +34,7 @@
     "ssl": true,
     "user": "",
     "pass": "",
-    "connections": 20
+    "connections": 20,
+    "prefetch_segments": 2
   }
 }
