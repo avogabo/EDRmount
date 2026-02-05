@@ -6,7 +6,7 @@ COPY . .
 RUN go build -o /out/edrmount ./cmd/edrmount
 
 FROM ubuntu:jammy
-RUN apt-get update && apt-get install -y ca-certificates fuse curl libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 
 # ngpost's bundled Qt expects OpenSSL 1.1 (libcrypto.so.1.1/libssl.so.1.1).
 # Ubuntu jammy ships OpenSSL 3, so we temporarily add focal to install libssl1.1.
