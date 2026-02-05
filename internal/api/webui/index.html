@@ -159,36 +159,42 @@
     <div class="card">
       <h2>Manual library (Folders)</h2>
       <div class="row">
-        <label>Current folder id <input id="man_dir" style="min-width:320px" value="root" /></label>
+        <label>Current folder <input id="man_dir" style="min-width:320px" value="root" /></label>
         <button class="btn" id="btnManRefresh">Refresh</button>
         <span class="muted" id="manStatus"></span>
       </div>
+
       <div class="row">
-        <label>New folder name <input id="man_new_folder" style="min-width:260px" placeholder="Top 10" /></label>
-        <button class="btn" id="btnManNewFolder">Create folder</button>
+        <label>New folder <input id="man_new_folder" style="min-width:260px" placeholder="Top 10" /></label>
+        <button class="btn" id="btnManNewFolder">Create</button>
       </div>
-      <div class="row">
-        <label>Link from import_id <input id="man_imp" style="min-width:320px" placeholder="b464362c..." /></label>
-        <label>file_idx <input id="man_idx" style="width:90px" type="number" value="0" /></label>
-        <label>label <input id="man_label" style="min-width:260px" placeholder="(optional display name)" /></label>
-        <button class="btn" id="btnManAdd">Add link</button>
+
+      <div id="manBrowser" class="row" style="align-items:flex-start; gap:16px">
+        <div style="flex:1; min-width:320px">
+          <div class="muted" style="margin-bottom:6px">Folders</div>
+          <div id="manFolders"></div>
+        </div>
+        <div style="flex:2; min-width:420px">
+          <div class="muted" style="margin-bottom:6px">Items</div>
+          <div id="manItems"></div>
+        </div>
       </div>
 
       <div class="row">
         <label>Pick import <select id="man_pick_import" style="min-width:520px"></select></label>
         <button class="btn" id="btnManLoadImport">Load files</button>
       </div>
-      <pre id="manImportFiles" class="mono">Select an import and load files to add links quickly.</pre>
+      <div id="manImportFiles"></div>
 
       <div class="row">
-        <label>Selected item id <input id="man_item_id" style="min-width:360px" placeholder="(click an item below)" /></label>
-        <label>New label <input id="man_item_label" style="min-width:260px" placeholder="Rename" /></label>
-        <label>Move to dir_id <input id="man_item_move" style="min-width:260px" placeholder="(dest folder id)" /></label>
-        <button class="btn" id="btnManUpdateItem">Update item</button>
-        <button class="btn" id="btnManDeleteItem">Delete item</button>
+        <label>Selected item id <input id="man_item_id" style="min-width:360px" placeholder="(click an item above)" /></label>
+        <label>Label <input id="man_item_label" style="min-width:260px" placeholder="Rename" /></label>
+        <label>Move to folder <input id="man_item_move" style="min-width:260px" placeholder="(dest folder id)" /></label>
+        <button class="btn" id="btnManUpdateItem">Update</button>
+        <button class="btn" id="btnManDeleteItem">Delete</button>
       </div>
 
-      <pre id="manOut" class="mono">Use Imports/ in the FUSE mount for the full raw view. Here you can build custom folders via links.</pre>
+      <div class="muted">Tip: the FUSE mount has <code>library-manual/Imports</code> (everything) and <code>library-manual/Folders</code> (your custom virtual folders).</div>
     </div>
 
     <div class="card">
