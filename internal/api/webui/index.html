@@ -173,6 +173,21 @@
         <label>label <input id="man_label" style="min-width:260px" placeholder="(optional display name)" /></label>
         <button class="btn" id="btnManAdd">Add link</button>
       </div>
+
+      <div class="row">
+        <label>Pick import <select id="man_pick_import" style="min-width:520px"></select></label>
+        <button class="btn" id="btnManLoadImport">Load files</button>
+      </div>
+      <pre id="manImportFiles" class="mono">Select an import and load files to add links quickly.</pre>
+
+      <div class="row">
+        <label>Selected item id <input id="man_item_id" style="min-width:360px" placeholder="(click an item below)" /></label>
+        <label>New label <input id="man_item_label" style="min-width:260px" placeholder="Rename" /></label>
+        <label>Move to dir_id <input id="man_item_move" style="min-width:260px" placeholder="(dest folder id)" /></label>
+        <button class="btn" id="btnManUpdateItem">Update item</button>
+        <button class="btn" id="btnManDeleteItem">Delete item</button>
+      </div>
+
       <pre id="manOut" class="mono">Use Imports/ in the FUSE mount for the full raw view. Here you can build custom folders via links.</pre>
     </div>
 
@@ -203,6 +218,7 @@
   </div>
 
   <script src="/webui/app.js"></script>
+  <script src="/webui/manual.js"></script>
   <script src="/webui/download.js"></script>
 </body>
 </html>

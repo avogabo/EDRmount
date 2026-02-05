@@ -8,6 +8,7 @@ import (
 
 type fileRow struct {
 	Idx           int      `json:"idx"`
+	Filename      string   `json:"filename"`
 	Subject       string   `json:"subject"`
 	Poster        string   `json:"poster"`
 	Date          int64    `json:"date"`
@@ -44,7 +45,7 @@ func (s *Server) registerCatalogFileRoutes() {
 			return
 		}
 
-		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT idx,subject,poster,date,groups_json,segments_count,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
+		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT idx,filename,subject,poster,date,groups_json,segments_count,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -56,7 +57,7 @@ func (s *Server) registerCatalogFileRoutes() {
 		for rows.Next() {
 			var fr fileRow
 			var groupsJSON string
-			if err := rows.Scan(&fr.Idx, &fr.Subject, &fr.Poster, &fr.Date, &groupsJSON, &fr.SegmentsCount, &fr.TotalBytes); err != nil {
+			if err := rows.Scan(&fr.Idx, &fr.Filename, &fr.Subject, &fr.Poster, &fr.Date, &groupsJSON, &fr.SegmentsCount, &fr.TotalBytes); err != nil {
 				continue
 			}
 			_ = json.Unmarshal([]byte(groupsJSON), &fr.Groups)

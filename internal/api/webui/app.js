@@ -319,12 +319,24 @@ async function refreshManual() {
     const lines = [];
     lines.push(`DIR ${dir}`);
     lines.push('');
-    lines.push('Subfolders:');
-    for (const d of dirs) lines.push(`- ${d.name}   (id=${d.id})`);
+    lines.push('Subfolders (click id to navigate):');
+    for (const d of dirs) lines.push(`- ${d.name}   id=${d.id}`);
     lines.push('');
-    lines.push('Items:');
-    for (const it of items) lines.push(`- ${it.label}   import=${it.import_id} idx=${it.file_idx} bytes=${it.bytes}`);
+    lines.push('Items (click id to edit):');
+    for (const it of items) lines.push(`- id=${it.id}  label=${it.label}  import=${it.import_id} idx=${it.file_idx} bytes=${it.bytes}`);
     out.textContent = lines.join('\n');
+
+    // Populate import picker
+    const imports = await apiGet('/api/v1/catalog/imports');
+    const sel = document.getElementById('man_pick_import');
+    sel.innerHTML = '';
+    for (const imp of imports) {
+      const opt = document.createElement('option');
+      opt.value = imp.id;
+      opt.textContent = `${imp.id.slice(0,8)}  (${imp.files_count} files)  ${imp.path}`;
+      sel.appendChild(opt);
+    }
+
     status.textContent = `OK (${dirs.length} folders, ${items.length} items)`;
   } catch (e) {
     status.textContent = 'Error: ' + String(e);
@@ -400,5 +412,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnManRefresh').onclick = () => refreshManual().catch(err => alert(err));
   document.getElementById('btnManNewFolder').onclick = () => createManualFolder().catch(err => alert(err));
   document.getElementById('btnManAdd').onclick = () => addManualItem().catch(err => alert(err));
+  document.getElementById('btnManLoadImport').onclick = () => loadImportFilesForManual().catch(err => alert(err));
+  document.getElementById('btnManUpdateItem').onclick = () => updateManualItem().catch(err => alert(err));
+  document.getElementById('btnManDeleteItem').onclick = () => deleteManualItem().catch(err => alert(err));
+  attachManualClickHelpers();
   boot().catch(err => alert(err));
 });
