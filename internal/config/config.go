@@ -12,6 +12,9 @@ type Paths struct {
 	NzbInbox   string `json:"nzb_inbox"`
 	MediaInbox string `json:"media_inbox"`
 	CacheDir   string `json:"cache_dir"`
+
+	// CacheMaxBytes is a best-effort size limit for /cache contents.
+	CacheMaxBytes int64 `json:"cache_max_bytes"`
 }
 
 type Server struct {
@@ -35,11 +38,12 @@ func Default() Config {
 	return Config{
 		Server: Server{Addr: ":1516"},
 		Paths: Paths{
-			HostRoot:   "/host",
-			MountPoint: "/host/mount",
-			NzbInbox:   "/host/inbox/nzb",
-			MediaInbox: "/host/inbox/media",
-			CacheDir:   "/cache",
+			HostRoot:      "/host",
+			MountPoint:    "/host/mount",
+			NzbInbox:      "/host/inbox/nzb",
+			MediaInbox:    "/host/inbox/media",
+			CacheDir:      "/cache",
+			CacheMaxBytes: 50 * 1024 * 1024 * 1024,
 		},
 		Runner:   Runner{Mode: "stub"},
 		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb"},

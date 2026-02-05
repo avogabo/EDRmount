@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gaby/EDRmount/internal/nntp"
+	"github.com/gaby/EDRmount/internal/cache"
 	"github.com/gaby/EDRmount/internal/yenc"
 )
 
@@ -64,15 +64,15 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 		return "", err
 	}
 
-	// Download + decode
-	cl, err := nntp.Dial(ctx, nntp.Config{Host: s.cfg.Host, Port: s.cfg.Port, SSL: s.cfg.SSL, User: s.cfg.User, Pass: s.cfg.Pass, Timeout: 15 * time.Second})
+	// Download + decode (reuse NNTP connections)
+	if s.pool == nil {
+		return "", fmt.Errorf("nntp pool not initialized")
+	}
+	cl, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return "", err
 	}
-	defer cl.Close()
-	if err := cl.Auth(); err != nil {
-		return "", err
-	}
+	defer s.pool.Release(cl)
 	log.Printf("rawseg: import=%s fileIdx=%d seg=%d fetching", seg.ImportID, seg.FileIdx, seg.Number)
 	lines, err := cl.BodyByMessageID(seg.MessageID)
 	if err != nil {
@@ -92,6 +92,8 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 	if err := os.Rename(tmp, p); err != nil {
 		return "", err
 	}
+	// Best-effort cache limit enforcement.
+	cache.EnforceSizeLimit(filepath.Join(s.cacheDir, "rawseg"), s.maxCache)
 	return p, nil
 }
 

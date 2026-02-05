@@ -20,10 +20,21 @@ type Streamer struct {
 	cfg      config.DownloadProvider
 	jobs     *jobs.Store
 	cacheDir string
+	pool     *nntp.Pool
+	maxCache int64
 }
 
-func New(cfg config.DownloadProvider, j *jobs.Store, cacheDir string) *Streamer {
-	return &Streamer{cfg: cfg, jobs: j, cacheDir: cacheDir}
+func New(cfg config.DownloadProvider, j *jobs.Store, cacheDir string, maxCacheBytes int64) *Streamer {
+	// Conservative pool size for streaming; cap even if provider allows more.
+	poolSize := 8
+	if cfg.Connections > 0 && cfg.Connections < poolSize {
+		poolSize = cfg.Connections
+	}
+	if poolSize < 1 {
+		poolSize = 1
+	}
+	p := nntp.NewPool(nntp.Config{Host: cfg.Host, Port: cfg.Port, SSL: cfg.SSL, User: cfg.User, Pass: cfg.Pass, Timeout: 15 * time.Second}, poolSize)
+	return &Streamer{cfg: cfg, jobs: j, cacheDir: cacheDir, pool: p, maxCache: maxCacheBytes}
 }
 
 type segRow struct {

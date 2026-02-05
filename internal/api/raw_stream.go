@@ -31,7 +31,7 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir)
+	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir, s.cfg.Paths.CacheMaxBytes)
 
 	// Find matching file_idx by subject-derived filename and also get total bytes.
 	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT idx,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
