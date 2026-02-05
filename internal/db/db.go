@@ -112,6 +112,8 @@ func (d *DB) migrate() error {
 			return err
 		}
 	}
+	// Best-effort backfill filename for older imports
+	_ = backfillFilenames(d.SQL)
 	return nil
 }
 
