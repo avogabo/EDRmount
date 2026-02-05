@@ -172,6 +172,25 @@ async function loadConfigEditor() {
   document.getElementById('dl_pass').value = (d.pass && d.pass !== '***') ? d.pass : '';
   document.getElementById('dl_connections').value = d.connections || 20;
   document.getElementById('dl_prefetch').value = (d.prefetch_segments != null) ? d.prefetch_segments : 2;
+
+  // Fill library + metadata form
+  const l = (cfg.library || {});
+  document.getElementById('lib_enabled').checked = (l.enabled !== false);
+  document.getElementById('lib_upper').checked = !!l.uppercase_folders;
+  document.getElementById('lib_movies_root').value = l.movies_root || 'Peliculas';
+  document.getElementById('lib_series_root').value = l.series_root || 'SERIES';
+  document.getElementById('lib_emision').value = l.emision_folder || 'Emision';
+  document.getElementById('lib_finalizadas').value = l.finalizadas_folder || 'Finalizadas';
+  document.getElementById('lib_movie_dir').value = l.movie_dir_template || '';
+  document.getElementById('lib_movie_file').value = l.movie_file_template || '';
+  document.getElementById('lib_series_dir').value = l.series_dir_template || '';
+  document.getElementById('lib_season_dir').value = l.season_folder_template || '';
+  document.getElementById('lib_series_file').value = l.series_file_template || '';
+
+  const tm = ((cfg.metadata || {}).tmdb || {});
+  document.getElementById('tmdb_enabled').checked = !!tm.enabled;
+  document.getElementById('tmdb_lang').value = tm.language || 'es-ES';
+  document.getElementById('tmdb_key').value = '';
 }
 
 async function saveConfigEditor() {
@@ -183,6 +202,40 @@ async function saveConfigEditor() {
     const out = await apiPutJson('/api/v1/config', parsed);
     ta.value = fmtJSON(out);
     status.textContent = 'Saved.';
+    await loadConfigEditor();
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function saveLibraryForm() {
+  const status = document.getElementById('libStatus');
+  status.textContent = 'Saving library settings...';
+  try {
+    const cfg = await apiGet('/api/v1/config');
+    cfg.library = cfg.library || {};
+    cfg.library.enabled = document.getElementById('lib_enabled').checked;
+    cfg.library.uppercase_folders = document.getElementById('lib_upper').checked;
+    cfg.library.movies_root = document.getElementById('lib_movies_root').value.trim();
+    cfg.library.series_root = document.getElementById('lib_series_root').value.trim();
+    cfg.library.emision_folder = document.getElementById('lib_emision').value.trim();
+    cfg.library.finalizadas_folder = document.getElementById('lib_finalizadas').value.trim();
+    cfg.library.movie_dir_template = document.getElementById('lib_movie_dir').value.trim();
+    cfg.library.movie_file_template = document.getElementById('lib_movie_file').value.trim();
+    cfg.library.series_dir_template = document.getElementById('lib_series_dir').value.trim();
+    cfg.library.season_folder_template = document.getElementById('lib_season_dir').value.trim();
+    cfg.library.series_file_template = document.getElementById('lib_series_file').value.trim();
+
+    cfg.metadata = cfg.metadata || {};
+    cfg.metadata.tmdb = cfg.metadata.tmdb || {};
+    cfg.metadata.tmdb.enabled = document.getElementById('tmdb_enabled').checked;
+    cfg.metadata.tmdb.language = document.getElementById('tmdb_lang').value.trim();
+    const key = document.getElementById('tmdb_key').value;
+    if (key && key.trim() !== '') cfg.metadata.tmdb.api_key = key.trim();
+
+    const out = await apiPutJson('/api/v1/config', cfg);
+    document.getElementById('config').value = fmtJSON(out);
+    status.textContent = 'Saved library settings.';
     await loadConfigEditor();
   } catch (e) {
     status.textContent = 'Error: ' + String(e);
@@ -274,6 +327,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnRefreshJobs').onclick = () => refreshJobs().catch(err => alert(err));
   document.getElementById('btnRefreshCatalog').onclick = () => refreshCatalog().catch(err => alert(err));
   document.getElementById('btnSaveProvider').onclick = () => saveProviderForm().catch(err => alert(err));
+  document.getElementById('btnSaveLibrary').onclick = () => saveLibraryForm().catch(err => alert(err));
   document.getElementById('btnTestProvider').onclick = () => testProvider().catch(err => alert(err));
   document.getElementById('btnSaveDownload').onclick = () => saveDownloadProvider().catch(err => alert(err));
   document.getElementById('btnTestDownload').onclick = () => testDownloadProvider().catch(err => alert(err));

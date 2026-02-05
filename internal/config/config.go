@@ -32,6 +32,9 @@ type Config struct {
 
 	NgPost   NgPost           `json:"ngpost"`
 	Download DownloadProvider `json:"download"`
+
+	Library  Library  `json:"library"`
+	Metadata Metadata `json:"metadata"`
 }
 
 func Default() Config {
@@ -48,6 +51,8 @@ func Default() Config {
 		Runner:   Runner{Mode: "stub"},
 		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb", Obfuscate: true},
 		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 2},
+		Library:  (Library{Enabled: true}).withDefaults(),
+		Metadata: (Metadata{}).withDefaults(),
 	}
 }
 
@@ -63,6 +68,9 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return cfg, err
 	}
+	// Fill defaults for nested configs that may be missing
+	cfg.Library = cfg.Library.withDefaults()
+	cfg.Metadata = cfg.Metadata.withDefaults()
 	return cfg, nil
 }
 

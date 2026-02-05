@@ -89,6 +89,45 @@
     </div>
 
     <div class="card">
+      <h2>Library organization (Filebot-style)</h2>
+      <div class="row">
+        <label><input type="checkbox" id="lib_enabled" /> Enable library mount</label>
+        <label style="margin-left:12px"><input type="checkbox" id="lib_upper" /> Uppercase folders</label>
+      </div>
+      <div class="row">
+        <label>Movies root <input id="lib_movies_root" style="min-width:220px" placeholder="Peliculas" /></label>
+        <label>Series root <input id="lib_series_root" style="min-width:220px" placeholder="SERIES" /></label>
+      </div>
+      <div class="row">
+        <label>Emision folder <input id="lib_emision" style="min-width:220px" placeholder="Emision" /></label>
+        <label>Finalizadas folder <input id="lib_finalizadas" style="min-width:220px" placeholder="Finalizadas" /></label>
+      </div>
+      <div class="row">
+        <label>Movie dir template <input id="lib_movie_dir" style="min-width:820px" /></label>
+      </div>
+      <div class="row">
+        <label>Movie file template <input id="lib_movie_file" style="min-width:820px" /></label>
+      </div>
+      <div class="row">
+        <label>Series dir template <input id="lib_series_dir" style="min-width:820px" /></label>
+      </div>
+      <div class="row">
+        <label>Season folder template <input id="lib_season_dir" style="min-width:420px" /></label>
+        <label>Series file template <input id="lib_series_file" style="min-width:420px" /></label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="tmdb_enabled" /> Enable TMDB metadata</label>
+        <label>TMDB language <input id="tmdb_lang" style="width:120px" placeholder="es-ES" /></label>
+        <label>TMDB API key <input id="tmdb_key" style="min-width:260px" type="password" placeholder="(leave blank to keep)" /></label>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnSaveLibrary">Save library</button>
+        <span class="muted" id="libStatus"></span>
+      </div>
+      <div class="muted">Templates support vars like {title}, {year}, {tmdb_id}, {initial}, {quality}, {series_status}, {season:00}, {episode:00}.</div>
+    </div>
+
+    <div class="card">
       <h2>Settings (full config.json)</h2>
       <div class="row">
         <button class="btn" id="btnReloadConfig">Reload</button>
