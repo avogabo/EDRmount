@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -79,6 +80,7 @@ func (d *DB) migrate() error {
 			import_id TEXT NOT NULL,
 			idx INTEGER NOT NULL,
 			subject TEXT NOT NULL,
+			filename TEXT,
 			poster TEXT,
 			date INTEGER,
 			groups_json TEXT NOT NULL,
@@ -87,6 +89,8 @@ func (d *DB) migrate() error {
 			PRIMARY KEY(import_id, idx)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_nzb_files_import ON nzb_files(import_id);`,
+		// Backward-compatible migration for older DBs
+		`ALTER TABLE nzb_files ADD COLUMN filename TEXT;`,
 
 		`CREATE TABLE IF NOT EXISTS nzb_segments (
 			import_id TEXT NOT NULL,
@@ -100,6 +104,11 @@ func (d *DB) migrate() error {
 	}
 	for _, s := range stmts {
 		if _, err := d.SQL.Exec(s); err != nil {
+			// ignore duplicate-column errors for ALTER TABLE
+			es := err.Error()
+			if strings.Contains(es, "duplicate") || strings.Contains(es, "already exists") {
+				continue
+			}
 			return err
 		}
 	}

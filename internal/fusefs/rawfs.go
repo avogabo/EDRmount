@@ -106,7 +106,7 @@ func (n *rawImportDir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (n *rawImportDir) listFiles(ctx context.Context) ([]fileEntry, error) {
-	rows, err := n.fs.Jobs.DB().SQL.QueryContext(ctx, `SELECT idx,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, n.importID)
+	rows, err := n.fs.Jobs.DB().SQL.QueryContext(ctx, `SELECT idx,filename,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, n.importID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,11 +114,20 @@ func (n *rawImportDir) listFiles(ctx context.Context) ([]fileEntry, error) {
 	out := make([]fileEntry, 0)
 	for rows.Next() {
 		var e fileEntry
-		if err := rows.Scan(&e.Idx, &e.Subject, &e.Bytes); err != nil {
+		var dbfn sql.NullString
+		if err := rows.Scan(&e.Idx, &dbfn, &e.Subject, &e.Bytes); err != nil {
 			continue
 		}
-		fn, ok := subject.FilenameFromSubject(e.Subject)
-		if !ok || fn == "" {
+		fn := ""
+		if dbfn.Valid {
+			fn = dbfn.String
+		} else {
+			f2, ok := subject.FilenameFromSubject(e.Subject)
+			if ok {
+				fn = f2
+			}
+		}
+		if fn == "" {
 			fn = fmt.Sprintf("file_%04d.bin", e.Idx)
 		}
 		e.Name = fn

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gaby/EDRmount/internal/jobs"
 	"github.com/gaby/EDRmount/internal/nzb"
+	"github.com/gaby/EDRmount/internal/subject"
 )
 
 type Importer struct {
@@ -61,8 +62,12 @@ func (i *Importer) ImportNZB(ctx context.Context, jobID string, path string) (fi
 		for _, s := range nf.Segments {
 			fb += s.Bytes
 		}
-		_, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_files(import_id,idx,subject,poster,date,groups_json,segments_count,total_bytes) VALUES(?,?,?,?,?,?,?,?)`,
-			importID, idx, nf.Subject, nf.Poster, nf.Date, groupsToJSON(nf.Groups), len(nf.Segments), fb)
+		fn, ok := subject.FilenameFromSubject(nf.Subject)
+		if !ok || fn == "" {
+			fn = fmt.Sprintf("file_%04d.bin", idx)
+		}
+		_, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO nzb_files(import_id,idx,subject,filename,poster,date,groups_json,segments_count,total_bytes) VALUES(?,?,?,?,?,?,?,?,?)`,
+			importID, idx, nf.Subject, fn, nf.Poster, nf.Date, groupsToJSON(nf.Groups), len(nf.Segments), fb)
 		if err != nil {
 			return 0, 0, err
 		}

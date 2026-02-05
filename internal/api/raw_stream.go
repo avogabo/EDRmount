@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,7 +35,7 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir, s.cfg.Paths.CacheMaxBytes)
 
 	// Find matching file_idx by subject-derived filename and also get total bytes.
-	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT idx,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
+	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT idx,filename,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -46,11 +47,20 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	var size int64
 	for rows.Next() {
 		var idx int
+		var dbfn sql.NullString
 		var subj string
 		var bytes int64
-		_ = rows.Scan(&idx, &subj, &bytes)
-		fn, ok := subject.FilenameFromSubject(subj)
-		if ok && fn == filename {
+		_ = rows.Scan(&idx, &dbfn, &subj, &bytes)
+		fn := ""
+		if dbfn.Valid {
+			fn = dbfn.String
+		} else {
+			f2, ok := subject.FilenameFromSubject(subj)
+			if ok {
+				fn = f2
+			}
+		}
+		if fn == filename {
 			fileIdx = idx
 			size = bytes
 			break
