@@ -118,6 +118,20 @@ func (c *Client) Auth() error {
 	return nil
 }
 
+func (c *Client) Noop() error {
+	if err := c.send("STAT"); err != nil {
+		return err
+	}
+	line, err := c.readLine()
+	if err != nil {
+		return err
+	}
+	// 223 is "article exists" but needs a message-id; some servers reply 500.
+	// We mainly care about detecting dead sockets; accept any response line.
+	_ = line
+	return nil
+}
+
 // BodyByMessageID fetches the body lines (dot-terminated) for a message-id.
 // Returns raw lines (without CRLF), with dot-stuffing already unescaped.
 func (c *Client) BodyByMessageID(messageID string) ([]string, error) {
