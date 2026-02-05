@@ -64,7 +64,11 @@ func main() {
 				} else {
 					log.Printf("FUSE library-auto mounted at %s/library-auto", cfg.Paths.MountPoint)
 				}
-				// library-manual mount will be added next
+				if _, err := fusefs.MountLibraryManual(ctx, cfg, srvJobs); err != nil {
+					log.Printf("FUSE library-manual mount failed: %v", err)
+				} else {
+					log.Printf("FUSE library-manual mounted at %s/library-manual", cfg.Paths.MountPoint)
+				}
 			}
 		}
 	}

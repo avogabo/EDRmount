@@ -101,6 +101,22 @@ func (d *DB) migrate() error {
 			PRIMARY KEY(import_id, file_idx, number)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_nzb_segments_file ON nzb_segments(import_id, file_idx);`,
+
+		// Manual library view (UI-managed)
+		`CREATE TABLE IF NOT EXISTS manual_dirs (
+			id TEXT PRIMARY KEY,
+			parent_id TEXT NOT NULL,
+			name TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_manual_dirs_parent ON manual_dirs(parent_id);`,
+		`CREATE TABLE IF NOT EXISTS manual_items (
+			id TEXT PRIMARY KEY,
+			dir_id TEXT NOT NULL,
+			label TEXT NOT NULL,
+			import_id TEXT NOT NULL,
+			file_idx INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_manual_items_dir ON manual_items(dir_id);`,
 	}
 	for _, s := range stmts {
 		if _, err := d.SQL.Exec(s); err != nil {
@@ -114,6 +130,7 @@ func (d *DB) migrate() error {
 	}
 	// Best-effort backfill filename for older imports
 	_ = backfillFilenames(d.SQL)
+	seedManualRoot(d.SQL)
 	return nil
 }
 
