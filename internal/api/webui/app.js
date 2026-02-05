@@ -308,10 +308,76 @@ function shouldAutoRefresh() {
   return true;
 }
 
+async function refreshManual() {
+  const out = document.getElementById('manOut');
+  const status = document.getElementById('manStatus');
+  const dir = (document.getElementById('man_dir').value || 'root').trim();
+  status.textContent = 'Loading...';
+  try {
+    const dirs = await apiGet(`/api/v1/manual/dirs?parent_id=${encodeURIComponent(dir)}`);
+    const items = await apiGet(`/api/v1/manual/items?dir_id=${encodeURIComponent(dir)}`);
+    const lines = [];
+    lines.push(`DIR ${dir}`);
+    lines.push('');
+    lines.push('Subfolders:');
+    for (const d of dirs) lines.push(`- ${d.name}   (id=${d.id})`);
+    lines.push('');
+    lines.push('Items:');
+    for (const it of items) lines.push(`- ${it.label}   import=${it.import_id} idx=${it.file_idx} bytes=${it.bytes}`);
+    out.textContent = lines.join('\n');
+    status.textContent = `OK (${dirs.length} folders, ${items.length} items)`;
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function createManualFolder() {
+  const status = document.getElementById('manStatus');
+  const dir = (document.getElementById('man_dir').value || 'root').trim();
+  const name = (document.getElementById('man_new_folder').value || '').trim();
+  status.textContent = 'Creating...';
+  try {
+    const r = await fetch('/api/v1/manual/dirs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ parent_id: dir, name })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    status.textContent = 'Created.';
+    document.getElementById('man_new_folder').value = '';
+    await refreshManual();
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function addManualItem() {
+  const status = document.getElementById('manStatus');
+  const dir = (document.getElementById('man_dir').value || 'root').trim();
+  const importId = (document.getElementById('man_imp').value || '').trim();
+  const fileIdx = Number(document.getElementById('man_idx').value || 0);
+  const label = (document.getElementById('man_label').value || '').trim();
+  status.textContent = 'Adding...';
+  try {
+    const r = await fetch('/api/v1/manual/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ dir_id: dir, import_id: importId, file_idx: fileIdx, label })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    status.textContent = 'Added.';
+    document.getElementById('man_label').value = '';
+    await refreshManual();
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
 async function boot() {
   await loadConfigEditor();
   await refreshJobs();
   await refreshCatalog();
+  await refreshManual();
   // Auto-refresh, but slow enough to not fight the user.
   setInterval(() => {
     if (shouldAutoRefresh()) refreshJobs().catch(() => {});
@@ -331,5 +397,8 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnTestProvider').onclick = () => testProvider().catch(err => alert(err));
   document.getElementById('btnSaveDownload').onclick = () => saveDownloadProvider().catch(err => alert(err));
   document.getElementById('btnTestDownload').onclick = () => testDownloadProvider().catch(err => alert(err));
+  document.getElementById('btnManRefresh').onclick = () => refreshManual().catch(err => alert(err));
+  document.getElementById('btnManNewFolder').onclick = () => createManualFolder().catch(err => alert(err));
+  document.getElementById('btnManAdd').onclick = () => addManualItem().catch(err => alert(err));
   boot().catch(err => alert(err));
 });

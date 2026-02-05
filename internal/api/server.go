@@ -183,6 +183,7 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerCatalogRoutes()
 	s.registerCatalogFileRoutes()
 	s.registerRawRoutes()
+	s.registerManualLibraryRoutes()
 
 	// UI static (placeholder for now)
 	ui := http.FS(uiFS)

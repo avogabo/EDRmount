@@ -157,6 +157,26 @@
     </div>
 
     <div class="card">
+      <h2>Manual library (Folders)</h2>
+      <div class="row">
+        <label>Current folder id <input id="man_dir" style="min-width:320px" value="root" /></label>
+        <button class="btn" id="btnManRefresh">Refresh</button>
+        <span class="muted" id="manStatus"></span>
+      </div>
+      <div class="row">
+        <label>New folder name <input id="man_new_folder" style="min-width:260px" placeholder="Top 10" /></label>
+        <button class="btn" id="btnManNewFolder">Create folder</button>
+      </div>
+      <div class="row">
+        <label>Link from import_id <input id="man_imp" style="min-width:320px" placeholder="b464362c..." /></label>
+        <label>file_idx <input id="man_idx" style="width:90px" type="number" value="0" /></label>
+        <label>label <input id="man_label" style="min-width:260px" placeholder="(optional display name)" /></label>
+        <button class="btn" id="btnManAdd">Add link</button>
+      </div>
+      <pre id="manOut" class="mono">Use Imports/ in the FUSE mount for the full raw view. Here you can build custom folders via links.</pre>
+    </div>
+
+    <div class="card">
       <h2>Catalog files (selected import)</h2>
       <pre id="catalogFiles" class="mono">Select an import and click “files”.</pre>
     </div>
