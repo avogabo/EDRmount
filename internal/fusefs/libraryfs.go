@@ -18,6 +18,7 @@ import (
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
 	"github.com/gaby/EDRmount/internal/library"
+	"github.com/gaby/EDRmount/internal/meta/tmdb"
 	"github.com/gaby/EDRmount/internal/streamer"
 )
 
@@ -31,9 +32,14 @@ import (
 type LibraryFS struct {
 	Cfg  config.Config
 	Jobs *jobs.Store
+
+	resolver *library.Resolver
 }
 
 func (r *LibraryFS) Root() (fs.Node, error) {
+	if r.resolver == nil {
+		r.resolver = library.NewResolver(r.Cfg)
+	}
 	return &libDir{fs: r, rel: ""}, nil
 }
 
@@ -129,7 +135,7 @@ func (n *libDir) rows(ctx context.Context) ([]libRow, error) {
 	return out, nil
 }
 
-func (n *libDir) buildPath(row libRow) string {
+func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	l := n.fs.Cfg.Library.Defaults()
 	g := library.GuessFromFilename(row.Filename)
 	initial := library.InitialFolder(g.Title)
@@ -139,45 +145,89 @@ func (n *libDir) buildPath(row libRow) string {
 		ext = filepath.Ext(row.Filename)
 	}
 
-	// placeholder ids until TMDB matching is wired.
-	id := "unknown"
 	year := g.Year
-	if year <= 0 {
+	if year < 0 {
 		year = 0
 	}
 
+	vars := map[string]string{
+		"movies_root":        l.MoviesRoot,
+		"series_root":        l.SeriesRoot,
+		"emision_folder":     l.EmisionFolder,
+		"finalizadas_folder": l.FinalizadasFolder,
+		"quality":            quality,
+		"initial":            initial,
+		"ext":                ext,
+	}
+	nums := map[string]int{
+		"year":    year,
+		"season":  g.Season,
+		"episode": g.Episode,
+	}
+
 	if !g.IsSeries {
-		dirName := g.Title
-		if year > 0 {
-			dirName = fmt.Sprintf("%s (%d)", g.Title, year)
+		movieTitle := g.Title
+		tmdbID := 0
+		if n.fs.resolver != nil {
+			if m, ok := n.fs.resolver.ResolveMovie(ctxbg(ctx), movieTitle, year); ok {
+				movieTitle = m.Title
+				y := m.ReleaseYear()
+				if y > 0 {
+					year = y
+					nums["year"] = y
+				}
+				tmdbID = m.ID
+			}
 		}
-		dirName = fmt.Sprintf("%s tmdb-%s", dirName, id)
-		dir := filepath.Join(l.MoviesRoot, quality, initial, dirName)
-		fileName := g.Title
-		if year > 0 {
-			fileName = fmt.Sprintf("%s (%d)", g.Title, year)
-		}
-		fileName = fmt.Sprintf("%s tmdb-%s%s", fileName, id, ext)
-		p := filepath.Join(dir, fileName)
+		vars["title"] = movieTitle
+		vars["tmdb_id"] = fmt.Sprintf("%d", tmdbID)
+
+		dir := library.CleanPath(library.Render(l.MovieDirTemplate, vars, nums))
+		file := library.CleanPath(library.Render(l.MovieFileTemplate, vars, nums))
+		p := filepath.Join(dir, file)
 		if l.UppercaseFolders {
 			p = library.ApplyUppercaseFolders(p)
 		}
 		return p
 	}
 
-	// series: simple placeholder title/year as well
-	seriesStatus := l.EmisionFolder
+	// Series
 	seriesName := g.Title
-	if year > 0 {
-		seriesName = fmt.Sprintf("%s (%d)", g.Title, year)
+	seriesTMDB := 0
+	bucket := l.EmisionFolder
+	if n.fs.resolver != nil {
+		if tv, ok := n.fs.resolver.ResolveTV(ctxbg(ctx), seriesName, year); ok {
+			seriesName = tv.Name
+			y := tv.FirstAirYear()
+			if y > 0 {
+				year = y
+				nums["year"] = y
+			}
+			seriesTMDB = tv.ID
+			b := tmdb.MapTVStatusToBucket(tv.Status)
+			if b == tmdb.SeriesBucketFinalizada {
+				bucket = l.FinalizadasFolder
+			} else if b == tmdb.SeriesBucketEmision {
+				bucket = l.EmisionFolder
+			}
+			if g.Season > 0 && g.Episode > 0 {
+				if epName, ok := n.fs.resolver.ResolveEpisodeTitle(ctxbg(ctx), tv.ID, g.Season, g.Episode); ok {
+					vars["episode_title"] = epName
+				}
+			}
+		}
 	}
-	seriesName = fmt.Sprintf("%s tmdb-%s", seriesName, id)
-	seasonFolder := fmt.Sprintf("Temporada %02d", maxInt(1, g.Season))
-	epTitle := "Episode"
-	fileName := fmt.Sprintf("%02dx%02d - %s%s", maxInt(1, g.Season), maxInt(1, g.Episode), epTitle, ext)
+	if _, ok := vars["episode_title"]; !ok {
+		vars["episode_title"] = "Episode"
+	}
+	vars["series"] = seriesName
+	vars["tmdb_id"] = fmt.Sprintf("%d", seriesTMDB)
+	vars["series_status"] = bucket
 
-	dir := filepath.Join(l.SeriesRoot, seriesStatus, initial, seriesName, seasonFolder)
-	p := filepath.Join(dir, fileName)
+	baseDir := library.CleanPath(library.Render(l.SeriesDirTemplate, vars, nums))
+	seasonDirName := library.CleanPath(library.Render(l.SeasonFolderTemplate, vars, nums))
+	file := library.CleanPath(library.Render(l.SeriesFileTemplate, vars, nums))
+	p := filepath.Join(baseDir, seasonDirName, file)
 	if l.UppercaseFolders {
 		p = library.ApplyUppercaseFolders(p)
 	}
@@ -191,6 +241,13 @@ func maxInt(a, b int) int {
 	return b
 }
 
+func ctxbg(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 func (n *libDir) children(ctx context.Context) (dirs []string, files map[string]libRow, err error) {
 	rows, err := n.rows(ctx)
 	if err != nil {
@@ -201,7 +258,7 @@ func (n *libDir) children(ctx context.Context) (dirs []string, files map[string]
 	seenDir := map[string]bool{}
 
 	for _, r := range rows {
-		p := filepath.Clean(n.buildPath(r))
+		p := filepath.Clean(n.buildPath(ctx, r))
 		p = strings.TrimPrefix(p, string(filepath.Separator))
 
 		// match prefix
