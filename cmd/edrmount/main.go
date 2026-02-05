@@ -53,9 +53,17 @@ func main() {
 
 		if enableFuse {
 			if _, err := fusefs.MountRaw(ctx, cfg, srvJobs); err != nil {
-				log.Printf("FUSE mount failed: %v", err)
+				log.Printf("FUSE raw mount failed: %v", err)
 			} else {
 				log.Printf("FUSE raw mounted at %s/raw", cfg.Paths.MountPoint)
+			}
+
+			if cfg.Library.Enabled {
+				if _, err := fusefs.MountLibrary(ctx, cfg, srvJobs); err != nil {
+					log.Printf("FUSE library mount failed: %v", err)
+				} else {
+					log.Printf("FUSE library mounted at %s/library", cfg.Paths.MountPoint)
+				}
 			}
 		}
 	}
