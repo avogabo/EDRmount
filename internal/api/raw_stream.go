@@ -45,22 +45,31 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	fileIdx := -1
 	var size int64
+	seen := map[string]int{}
 	for rows.Next() {
 		var idx int
 		var dbfn sql.NullString
 		var subj string
 		var bytes int64
 		_ = rows.Scan(&idx, &dbfn, &subj, &bytes)
-		fn := ""
+		base := ""
 		if dbfn.Valid {
-			fn = dbfn.String
+			base = dbfn.String
 		} else {
 			f2, ok := subject.FilenameFromSubject(subj)
 			if ok {
-				fn = f2
+				base = f2
 			}
 		}
-		if fn == filename {
+		if base == "" {
+			base = fmt.Sprintf("file_%04d.bin", idx)
+		}
+		seen[base]++
+		disp := base
+		if seen[base] > 1 {
+			disp = withSuffixBeforeExt(base, seen[base])
+		}
+		if disp == filename {
 			fileIdx = idx
 			size = bytes
 			break
@@ -144,4 +153,16 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	_ = serveMultiRangeFromFile(w, r, f, size, "application/octet-stream", mr)
+}
+
+func withSuffixBeforeExt(name string, n int) string {
+	if n <= 1 {
+		return name
+	}
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	if ext == "" {
+		return fmt.Sprintf("%s__%d", base, n)
+	}
+	return fmt.Sprintf("%s__%d%s", base, n, ext)
 }

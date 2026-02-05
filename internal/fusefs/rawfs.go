@@ -112,25 +112,32 @@ func (n *rawImportDir) listFiles(ctx context.Context) ([]fileEntry, error) {
 	}
 	defer rows.Close()
 	out := make([]fileEntry, 0)
+	seen := map[string]int{}
 	for rows.Next() {
 		var e fileEntry
 		var dbfn sql.NullString
 		if err := rows.Scan(&e.Idx, &dbfn, &e.Subject, &e.Bytes); err != nil {
 			continue
 		}
-		fn := ""
+		base := ""
 		if dbfn.Valid {
-			fn = dbfn.String
+			base = dbfn.String
 		} else {
 			f2, ok := subject.FilenameFromSubject(e.Subject)
 			if ok {
-				fn = f2
+				base = f2
 			}
 		}
-		if fn == "" {
-			fn = fmt.Sprintf("file_%04d.bin", e.Idx)
+		if base == "" {
+			base = fmt.Sprintf("file_%04d.bin", e.Idx)
 		}
-		e.Name = fn
+
+		name := base
+		seen[base]++
+		if seen[base] > 1 {
+			name = withSuffixBeforeExt(base, seen[base])
+		}
+		e.Name = name
 		out = append(out, e)
 	}
 	return out, nil
@@ -232,6 +239,18 @@ func safeName(s string) string {
 	s = filepath.Base(s)
 	s = strings.ReplaceAll(s, "/", "_")
 	return s
+}
+
+func withSuffixBeforeExt(name string, n int) string {
+	if n <= 1 {
+		return name
+	}
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	if ext == "" {
+		return fmt.Sprintf("%s__%d", base, n)
+	}
+	return fmt.Sprintf("%s__%d%s", base, n, ext)
 }
 
 // avoid unused imports in case of future expansion
