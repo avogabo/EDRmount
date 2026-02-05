@@ -46,7 +46,7 @@ func Default() Config {
 			CacheMaxBytes: 50 * 1024 * 1024 * 1024,
 		},
 		Runner:   Runner{Mode: "stub"},
-		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb"},
+		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb", Obfuscate: true},
 		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 2},
 	}
 }
