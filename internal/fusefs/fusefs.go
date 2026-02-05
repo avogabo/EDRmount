@@ -36,12 +36,15 @@ func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, er
 	if err := os.MkdirAll(opts.Mountpoint, 0o755); err != nil {
 		return nil, err
 	}
-	c, err := fuse.Mount(
-		opts.Mountpoint,
+	mountOpts := []fuse.MountOption{
 		fuse.ReadOnly(),
 		fuse.FSName("edrmount"),
 		fuse.Subtype("edrmount"),
-	)
+	}
+	if opts.AllowOther {
+		mountOpts = append(mountOpts, fuse.AllowOther())
+	}
+	c, err := fuse.Mount(opts.Mountpoint, mountOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -59,5 +62,5 @@ func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, er
 func MountRaw(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
 	mp := filepath.Join(cfg.Paths.MountPoint, "raw")
 	rfs := &RawFS{Cfg: cfg, Jobs: jobs}
-	return Start(ctx, MountOptions{Mountpoint: mp}, rfs)
+	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, rfs)
 }
