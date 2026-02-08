@@ -18,6 +18,8 @@ type State string
 const (
 	TypeImport Type = "import_nzb"
 	TypeUpload Type = "upload_media"
+	TypeHealthRepair Type = "health_repair_nzb"
+	TypeHealthScan   Type = "health_scan_nzb"
 
 	StateQueued  State = "queued"
 	StateRunning State = "running"

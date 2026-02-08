@@ -11,6 +11,8 @@ import (
 
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
+
+	"golang.org/x/sys/unix"
 )
 
 type MountOptions struct {
@@ -33,6 +35,12 @@ func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, er
 	if opts.Mountpoint == "" {
 		return nil, fmt.Errorf("mountpoint required")
 	}
+
+	// On container restarts, FUSE mountpoints can be left behind in a disconnected state
+	// ("Transport endpoint is not connected"). Best-effort detach any existing mount so
+	// we can mount cleanly.
+	_ = unix.Unmount(opts.Mountpoint, unix.MNT_DETACH)
+
 	if err := os.MkdirAll(opts.Mountpoint, 0o755); err != nil {
 		return nil, err
 	}

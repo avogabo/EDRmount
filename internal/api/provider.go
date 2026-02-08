@@ -79,8 +79,9 @@ func (s *Server) registerProviderRoutes() {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method {
 		case http.MethodGet:
-			ng := s.cfg.NgPost
-			dl := s.cfg.Download
+			cfg := s.Config()
+			ng := cfg.NgPost
+			dl := cfg.Download
 			if ng.Pass != "" {
 				ng.Pass = "***"
 			}

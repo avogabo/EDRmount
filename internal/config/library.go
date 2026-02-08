@@ -4,11 +4,11 @@ type Library struct {
 	Enabled bool `json:"enabled"`
 
 	// Root folders (inside the library mount).
-	MoviesRoot string `json:"movies_root"` // e.g. Peliculas
+	MoviesRoot string `json:"movies_root"` // e.g. PELICULAS
 	SeriesRoot string `json:"series_root"` // e.g. SERIES
 
-	EmisionFolder     string `json:"emision_folder"`     // e.g. Emision
-	FinalizadasFolder string `json:"finalizadas_folder"` // e.g. Finalizadas
+	EmisionFolder     string `json:"emision_folder"`     // e.g. EMISION
+	FinalizadasFolder string `json:"finalizadas_folder"` // e.g. FINALIZADAS
 
 	UppercaseFolders bool `json:"uppercase_folders"`
 
@@ -18,22 +18,22 @@ type Library struct {
 	SeriesDirTemplate  string `json:"series_dir_template"`
 	SeriesFileTemplate string `json:"series_file_template"`
 
-	SeasonFolderTemplate string `json:"season_folder_template"` // e.g. "Temporada {season:00}"
+	SeasonFolderTemplate string `json:"season_folder_template"` // e.g. "TEMPORADA {season:00}"
 }
 
 func (l Library) withDefaults() Library {
 	out := l
 	if out.MoviesRoot == "" {
-		out.MoviesRoot = "Peliculas"
+		out.MoviesRoot = "PELICULAS"
 	}
 	if out.SeriesRoot == "" {
 		out.SeriesRoot = "SERIES"
 	}
 	if out.EmisionFolder == "" {
-		out.EmisionFolder = "Emision"
+		out.EmisionFolder = "EMISION"
 	}
 	if out.FinalizadasFolder == "" {
-		out.FinalizadasFolder = "Finalizadas"
+		out.FinalizadasFolder = "FINALIZADAS"
 	}
 	if out.MovieDirTemplate == "" {
 		out.MovieDirTemplate = "{movies_root}/{quality}/{initial}/{title} ({year}) tmdb-{tmdb_id}"
@@ -45,10 +45,13 @@ func (l Library) withDefaults() Library {
 		out.SeriesDirTemplate = "{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}"
 	}
 	if out.SeasonFolderTemplate == "" {
-		out.SeasonFolderTemplate = "Temporada {season:00}"
+		out.SeasonFolderTemplate = "TEMPORADA {season:00}"
 	}
 	if out.SeriesFileTemplate == "" {
 		out.SeriesFileTemplate = "{season:00}x{episode:00} - {episode_title}{ext}"
 	}
 	return out
 }
+
+// Defaults returns a copy of the library config with empty fields filled.
+func (l Library) Defaults() Library { return l.withDefaults() }

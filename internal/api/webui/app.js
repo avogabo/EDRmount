@@ -14,6 +14,16 @@ async function apiPutJson(path, body) {
   return await r.json();
 }
 
+async function apiPostJson(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(body || {})
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return await r.json();
+}
+
 function el(tag, attrs = {}, children = []) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -56,7 +66,7 @@ async function refreshJobs() {
     const btnLogs = el('button', { class: 'btn', text: 'logs' });
     btnLogs.onclick = async () => {
       const out = document.getElementById('logs');
-      out.textContent = 'Loading logs...';
+      out.textContent = 'Cargando logs...';
       try {
         const resp = await apiGet(`/api/v1/jobs/${j.id}/logs?limit=200`);
         out.textContent = resp.lines.reverse().join('\n');
@@ -104,7 +114,7 @@ async function refreshCatalog() {
     const btnFiles = el('button', { class: 'btn', text: 'files' });
     btnFiles.onclick = async () => {
       const out = document.getElementById('catalogFiles');
-      out.textContent = 'Loading files...';
+      out.textContent = 'Cargando ficheros...';
       try {
         const files = await apiGet(`/api/v1/catalog/imports/${it.id}/files`);
         out.textContent = files.map(f => {
@@ -118,7 +128,7 @@ async function refreshCatalog() {
     const btnRaw = el('button', { class: 'btn', text: 'raw' });
     btnRaw.onclick = async () => {
       const out = document.getElementById('rawItems');
-      out.textContent = 'Loading raw view...';
+      out.textContent = 'Cargando vista raw...';
       try {
         const items = await apiGet(`/api/v1/raw/imports/${it.id}`);
         out.textContent = items.map(x => {
@@ -147,7 +157,10 @@ async function loadConfigEditor() {
   ta.value = fmtJSON(cfg);
   status.textContent = '';
 
-  // Fill upload provider form (ngpost)
+  // Fill upload provider form
+  const up = (cfg.upload || {});
+  document.getElementById('upload_provider').value = (up.provider || 'ngpost');
+
   const n = (cfg.ngpost || {});
   document.getElementById('ng_enabled').checked = !!n.enabled;
   document.getElementById('ng_host').value = n.host || '';
@@ -173,6 +186,11 @@ async function loadConfigEditor() {
   document.getElementById('dl_connections').value = d.connections || 20;
   document.getElementById('dl_prefetch').value = (d.prefetch_segments != null) ? d.prefetch_segments : 2;
 
+  // Fill runner form
+  const r = (cfg.runner || {});
+  document.getElementById('run_enabled').checked = (r.enabled !== false);
+  document.getElementById('run_mode').value = r.mode || 'stub';
+
   // Fill library + metadata form
   const l = (cfg.library || {});
   document.getElementById('lib_enabled').checked = (l.enabled !== false);
@@ -196,12 +214,46 @@ async function loadConfigEditor() {
 async function saveConfigEditor() {
   const ta = document.getElementById('config');
   const status = document.getElementById('configStatus');
-  status.textContent = 'Saving...';
+  status.textContent = 'Guardando...';
   try {
     const parsed = JSON.parse(ta.value);
     const out = await apiPutJson('/api/v1/config', parsed);
     ta.value = fmtJSON(out);
-    status.textContent = 'Saved.';
+    status.textContent = 'Guardado.';
+    await loadConfigEditor();
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function restartNow() {
+  const status = document.getElementById('runStatus');
+  status.textContent = 'Reiniciando... (Restarting...)';
+  try {
+    await apiPostJson('/api/v1/restart', {});
+    status.textContent = 'Reinicio solicitado (restart requested). Espera ~5-10s.';
+  } catch (e) {
+    status.textContent = 'Error: ' + String(e);
+  }
+}
+
+async function saveRunnerSettings() {
+  const status = document.getElementById('runStatus');
+  status.textContent = 'Guardando ajustes del runner...';
+  try {
+    const cfg = await apiGet('/api/v1/config');
+    const prevEnabled = (cfg.runner || {}).enabled !== false;
+    cfg.runner = cfg.runner || {};
+    cfg.runner.enabled = document.getElementById('run_enabled').checked;
+    cfg.runner.mode = document.getElementById('run_mode').value;
+    await apiPutJson('/api/v1/config', cfg);
+
+    const nextEnabled = cfg.runner.enabled;
+    if (prevEnabled !== nextEnabled) {
+      status.textContent = 'Guardado. Requiere reinicio (restart required).';
+    } else {
+      status.textContent = 'Guardado.';
+    }
     await loadConfigEditor();
   } catch (e) {
     status.textContent = 'Error: ' + String(e);
@@ -210,7 +262,7 @@ async function saveConfigEditor() {
 
 async function saveLibraryForm() {
   const status = document.getElementById('libStatus');
-  status.textContent = 'Saving library settings...';
+  status.textContent = 'Guardando biblioteca... (Saving library...)';
   try {
     const cfg = await apiGet('/api/v1/config');
     cfg.library = cfg.library || {};
@@ -235,7 +287,7 @@ async function saveLibraryForm() {
 
     const out = await apiPutJson('/api/v1/config', cfg);
     document.getElementById('config').value = fmtJSON(out);
-    status.textContent = 'Saved library settings.';
+    status.textContent = 'Guardado (saved).';
     await loadConfigEditor();
   } catch (e) {
     status.textContent = 'Error: ' + String(e);
@@ -244,9 +296,12 @@ async function saveLibraryForm() {
 
 async function saveProviderForm() {
   const status = document.getElementById('provStatus');
-  status.textContent = 'Saving provider settings...';
+  status.textContent = 'Guardando proveedor... (Saving provider...)';
   try {
     const cfg = await apiGet('/api/v1/config');
+    cfg.upload = cfg.upload || {};
+    cfg.upload.provider = document.getElementById('upload_provider').value;
+
     cfg.ngpost = cfg.ngpost || {};
     cfg.ngpost.enabled = document.getElementById('ng_enabled').checked;
     cfg.ngpost.host = document.getElementById('ng_host').value.trim();
@@ -265,7 +320,7 @@ async function saveProviderForm() {
 
     const out = await apiPutJson('/api/v1/config', cfg);
     document.getElementById('config').value = fmtJSON(out);
-    status.textContent = 'Saved provider settings.';
+    status.textContent = 'Guardado (saved).';
   } catch (e) {
     status.textContent = 'Error: ' + String(e);
   }
@@ -273,7 +328,7 @@ async function saveProviderForm() {
 
 async function testProvider() {
   const status = document.getElementById('provStatus');
-  status.textContent = 'Testing connectivity...';
+  status.textContent = 'Probando conectividad... (Testing...)';
   try {
     const req = {
       host: document.getElementById('ng_host').value.trim(),
@@ -312,7 +367,7 @@ async function refreshManual() {
   const out = document.getElementById('manOut');
   const status = document.getElementById('manStatus');
   const dir = (document.getElementById('man_dir').value || 'root').trim();
-  status.textContent = 'Loading...';
+  status.textContent = 'Cargando...';
   try {
     const dirs = await apiGet(`/api/v1/manual/dirs?parent_id=${encodeURIComponent(dir)}`);
     const items = await apiGet(`/api/v1/manual/items?dir_id=${encodeURIComponent(dir)}`);
@@ -387,6 +442,8 @@ async function addManualItem() {
 
 async function boot() {
   await loadConfigEditor();
+  await loadBackupSettings();
+  await refreshBackups();
   await refreshJobs();
   await refreshCatalog();
   await refreshManual();
@@ -410,11 +467,17 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnSaveDownload').onclick = () => saveDownloadProvider().catch(err => alert(err));
   document.getElementById('btnTestDownload').onclick = () => testDownloadProvider().catch(err => alert(err));
   document.getElementById('btnManRefresh').onclick = () => refreshManual().catch(err => alert(err));
+  // btnManUp is wired dynamically by renderManualBreadcrumb()
   document.getElementById('btnManNewFolder').onclick = () => createManualFolder().catch(err => alert(err));
-  document.getElementById('btnManAdd').onclick = () => addManualItem().catch(err => alert(err));
+  // Legacy btnManAdd removed from UI; add is done from the import file list.
   document.getElementById('btnManLoadImport').onclick = () => loadImportFilesForManual().catch(err => alert(err));
   document.getElementById('btnManUpdateItem').onclick = () => updateManualItem().catch(err => alert(err));
   document.getElementById('btnManDeleteItem').onclick = () => deleteManualItem().catch(err => alert(err));
+  document.getElementById('btnBkSave').onclick = () => saveBackupSettings().catch(err => alert(err));
+  document.getElementById('btnBkRun').onclick = () => backupNow().catch(err => alert(err));
+  document.getElementById('btnBkRefresh').onclick = () => refreshBackups().catch(err => alert(err));
+  document.getElementById('btnRunSave').onclick = () => saveRunnerSettings().catch(err => alert(err));
+  document.getElementById('btnRestart').onclick = () => restartNow().catch(err => alert(err));
   attachManualClickHelpers();
   boot().catch(err => alert(err));
 });

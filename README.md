@@ -1,47 +1,53 @@
 # EDRmount
 
-EDRmount is a Docker-first Unraid service that:
+EDRmount convierte **NZBs → una biblioteca FUSE** con MKVs “virtuales” que se **descargan on‑demand**, e incluye una **UI web** para **Importar / Subir / Health (reparar)**.
+Pensado para que **Plex apunte a `library-auto`**.
 
-- Watches an inbox for **NZB** files and/or **media files (MKV/dirs)**
-- Optionally **uploads media to Usenet (ngpost integrated)** and generates NZBs
-- Indexes NZBs into a local catalog
-- Exposes content as a **FUSE-mounted filesystem** suitable for Plex/Kodi/etc.
-  - `/mount/raw/...`  (release/NZB view)
-  - `/mount/library/...` (organized view)
+## Quickstart (Docker Compose)
 
-## Library layout (defaults)
+```yaml
+services:
+  edrmount:
+    image: edrmount:dev
+    container_name: edrmount
+    restart: unless-stopped
+    ports:
+      - "1516:1516"
+    privileged: true
+    security_opt:
+      - label=disable
+    volumes:
+      - ./edrmount-data/config:/config
+      - ./edrmount-data/host:/host:rshared
+      - ./edrmount-data/cache:/cache
+      - ./edrmount-backups:/backups
+```
 
-### Movies
-`Peliculas/{1080|4K}/{Inicial}/{Titulo} ({Año}) tmdb-{tmdbId}.{ext}`
+UI: `http://<HOST>:1516/webui/`
 
-Example:
-`Peliculas/1080/A/Avatar (2009) tmdb-19995.mkv`
+## Volúmenes / Paths
 
-### Series
-`SERIES/{Emision|Finalizadas}/{Inicial}/{Titulo} ({Año}) tvdb-{tvdbId}/Temporada {NN}/{NN}x{NN} - {TituloEpisodio}.{ext}`
+- `/config`: `config.json` + SQLite
+- `/host:rshared`: inbox + mounts FUSE
+- `/cache`: staging + cache + backups locales de Health
+- `/backups`: backups
 
-## Unraid volumes (recommended)
+Mounts (FUSE):
+- `/host/mount/raw`
+- `/host/mount/library-auto` (Plex)
+- `/host/mount/library-manual`
 
-**Config/state (appdata):**
-- `/mnt/user/appdata/EDRmount`  → container: `/config`
+## Funciones (UI)
 
-**Host data root (user selectable in template):**
-- e.g. `/mnt/user/Nubes/USENET` → container: `/host`
+- **Biblioteca**: navegar `library-auto` / `library-manual`
+- **Subida**: upload (ngPost/Nyuu) → NZB a RAW (+ PAR2 local opcional)
+- **Importar**: importar NZBs → aparecen MKVs virtuales
+- **Health**: escaneo + reparación automática con **PAR2 local** (genera NZB limpio, sin `.par2`)
+- **Ajustes**: config + restart
+- **Logs**: logs de jobs
 
-Suggested subpaths inside host root:
-- `/host/mount` (FUSE mountpoint)
-- `/host/inbox/nzb` (NZB inbox)
-- `/host/inbox/media` (media inbox)
-- `/host/cache` (cache directory, configurable from UI)
+## Notas importantes
 
-## Cache
-Cache path is **configurable from the Web UI**. For your setup, default recommendation:
-- host: `/mnt/vfs/EDRmount` → container: `/cache`
-
-## Status
-Scaffold created:
-- minimal Go HTTP server (UI placeholder)
-- sample config
-- Dockerfile + compose example
-
-Next: jobs (watchers), ngpost integration, SQLite catalog, and FUSE mount.
+- PAR2 se **guarda local** (no se sube al release).
+- Health usa `.health.lock` para evitar doble reparación en RAW compartido.
+- No publiques `config.json` con credenciales.

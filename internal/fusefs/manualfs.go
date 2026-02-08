@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"bazil.org/fuse"
@@ -30,31 +31,200 @@ type ManualFS struct {
 	Jobs *jobs.Store
 }
 
-func (m *ManualFS) Root() (fs.Node, error) { return &manualRoot{fs: m}, nil }
+func (m *ManualFS) Root() (fs.Node, error) { return &manualRawRoot{fs: m, rel: ""}, nil }
 
-type manualRoot struct{ fs *ManualFS }
+// manualRawRoot exposes a RAW-like directory tree based on nzb_imports.path.
+// For each NZB file, we expose a virtual folder named like the NZB (without .nzb)
+// that contains the MKV payloads.
+//
+// Example:
+//   (RAW)    /host/inbox/nzb/PELICULAS/1080/A/Movie (2020).nzb
+//   (Manual) /library-manual/PELICULAS/1080/A/Movie (2020)/Movie (2020).mkv
+//
+// Manual filenames are kept as-is from the NZB (only filtering to .mkv).
 
-func (n *manualRoot) Attr(ctx context.Context, a *fuse.Attr) error {
+type manualRawRoot struct {
+	fs  *ManualFS
+	rel string // relative path within the virtual manual tree
+}
+
+func (n *manualRawRoot) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
 
-func (n *manualRoot) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	return []fuse.Dirent{
-		{Name: "Imports", Type: fuse.DT_Dir},
-		{Name: "Folders", Type: fuse.DT_Dir},
-	}, nil
+type manualImportPath struct {
+	ID  string
+	Rel string // relative path from NZB root to the NZB file
 }
 
-func (n *manualRoot) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	switch name {
-	case "Imports":
-		return &manualImportsDir{fs: n.fs}, nil
-	case "Folders":
-		return &manualFoldersDir{fs: n.fs, dirID: "root"}, nil
-	default:
+func (n *manualRawRoot) nzbRoot() string {
+	root := strings.TrimSpace(n.fs.Cfg.NgPost.OutputDir)
+	if root == "" {
+		root = "/host/inbox/nzb"
+	}
+	return filepath.Clean(root)
+}
+
+func (n *manualRawRoot) importPaths(ctx context.Context) ([]manualImportPath, error) {
+	if n.fs == nil || n.fs.Jobs == nil {
+		return nil, nil
+	}
+	rows, err := n.fs.Jobs.DB().SQL.QueryContext(ctx, `SELECT id, path FROM nzb_imports ORDER BY imported_at DESC LIMIT 5000`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	root := n.nzbRoot()
+	out := make([]manualImportPath, 0)
+	for rows.Next() {
+		var id, p string
+		if err := rows.Scan(&id, &p); err != nil {
+			continue
+		}
+		p = filepath.Clean(p)
+		rel := ""
+		if p == root {
+			rel = ""
+		} else if strings.HasPrefix(p, root+string(filepath.Separator)) {
+			rel = strings.TrimPrefix(p, root+string(filepath.Separator))
+		} else {
+			// Not under the configured root; skip from the RAW-like view.
+			continue
+		}
+		if strings.TrimSpace(rel) == "" {
+			continue
+		}
+		out = append(out, manualImportPath{ID: id, Rel: rel})
+	}
+	return out, nil
+}
+
+type childEntry struct {
+	Name     string
+	IsNZBDir bool
+	ImportID string
+}
+
+func (n *manualRawRoot) children(ctx context.Context) ([]childEntry, error) {
+	imports, err := n.importPaths(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	curParts := []string{}
+	if strings.TrimSpace(n.rel) != "" {
+		curParts = strings.Split(n.rel, string(filepath.Separator))
+	}
+
+	// Collect dirs and nzb-leaf dirs.
+	dirs := map[string]bool{}
+	leaves := map[string][]string{} // name -> importIDs
+
+	for _, it := range imports {
+		parts := strings.Split(it.Rel, string(filepath.Separator))
+		if len(parts) == 0 {
+			continue
+		}
+		// Ensure this import is under current rel.
+		if len(parts) < len(curParts) {
+			continue
+		}
+		match := true
+		for i := range curParts {
+			if parts[i] != curParts[i] {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+
+		if len(parts) == len(curParts)+1 {
+			// leaf at this level: should be an NZB file
+			fn := parts[len(parts)-1]
+			if strings.ToLower(filepath.Ext(fn)) != ".nzb" {
+				continue
+			}
+			stem := strings.TrimSuffix(fn, filepath.Ext(fn))
+			stem = strings.TrimSpace(stem)
+			if stem == "" {
+				stem = it.ID
+			}
+			leaves[stem] = append(leaves[stem], it.ID)
+			continue
+		}
+
+		// intermediate dir
+		child := parts[len(curParts)]
+		if strings.TrimSpace(child) != "" {
+			dirs[child] = true
+		}
+	}
+
+	out := make([]childEntry, 0, len(dirs)+len(leaves))
+	for d := range dirs {
+		out = append(out, childEntry{Name: d, IsNZBDir: false})
+	}
+
+	// Resolve leaf name collisions by appending [id8]
+	for stem, ids := range leaves {
+		if len(ids) == 1 {
+			out = append(out, childEntry{Name: stem, IsNZBDir: true, ImportID: ids[0]})
+			continue
+		}
+		for _, id := range ids {
+			sfx := id
+			if len(sfx) > 8 {
+				sfx = sfx[:8]
+			}
+			out = append(out, childEntry{Name: fmt.Sprintf("%s [%s]", stem, sfx), IsNZBDir: true, ImportID: id})
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		// dirs first, then leaves
+		if out[i].IsNZBDir != out[j].IsNZBDir {
+			return !out[i].IsNZBDir
+		}
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out, nil
+}
+
+func (n *manualRawRoot) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	kids, err := n.children(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]fuse.Dirent, 0, len(kids))
+	for _, k := range kids {
+		out = append(out, fuse.Dirent{Name: k.Name, Type: fuse.DT_Dir})
+	}
+	return out, nil
+}
+
+func (n *manualRawRoot) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	kids, err := n.children(ctx)
+	if err != nil {
 		return nil, fuse.ENOENT
 	}
+	for _, k := range kids {
+		if k.Name != name {
+			continue
+		}
+		if k.IsNZBDir {
+			return &manualImportDir{fs: n.fs, importID: k.ImportID}, nil
+		}
+		next := name
+		if strings.TrimSpace(n.rel) != "" {
+			next = filepath.Join(n.rel, name)
+		}
+		return &manualRawRoot{fs: n.fs, rel: next}, nil
+	}
+	return nil, fuse.ENOENT
 }
 
 // ---------------- Imports tree ----------------
@@ -133,6 +303,12 @@ func (n *manualImportDir) list(ctx context.Context) ([]impFileRow, error) {
 		if name == "" {
 			name = fmt.Sprintf("file_%04d.bin", r.Idx)
 		}
+
+		// Manual library: only expose MKV payloads.
+		if strings.ToLower(filepath.Ext(name)) != ".mkv" {
+			continue
+		}
+
 		seen[name]++
 		if seen[name] > 1 {
 			name = withSuffixBeforeExt(name, seen[name])
@@ -219,12 +395,13 @@ func (n *manualFoldersDir) children(ctx context.Context) ([]folderRow, []itemRow
 		dirs = append(dirs, fr)
 	}
 
-	// items
+	// items (only MKVs)
 	q := `
 		SELECT i.id, i.label, i.import_id, i.file_idx, f.total_bytes, f.filename
 		FROM manual_items i
 		JOIN nzb_files f ON f.import_id=i.import_id AND f.idx=i.file_idx
 		WHERE i.dir_id=?
+		  AND LOWER(COALESCE(f.filename, '')) LIKE '%.mkv'
 		ORDER BY i.label
 	`
 	irows, err := n.fs.Jobs.DB().SQL.QueryContext(ctx, q, n.dirID)
@@ -346,9 +523,9 @@ func (n *manualFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse
 }
 
 var _ fs.FS = (*ManualFS)(nil)
-var _ fs.Node = (*manualRoot)(nil)
-var _ fs.NodeStringLookuper = (*manualRoot)(nil)
-var _ fs.HandleReadDirAller = (*manualRoot)(nil)
+var _ fs.Node = (*manualRawRoot)(nil)
+var _ fs.NodeStringLookuper = (*manualRawRoot)(nil)
+var _ fs.HandleReadDirAller = (*manualRawRoot)(nil)
 
 var _ fs.Node = (*manualImportsDir)(nil)
 var _ fs.NodeStringLookuper = (*manualImportsDir)(nil)
@@ -357,10 +534,6 @@ var _ fs.HandleReadDirAller = (*manualImportsDir)(nil)
 var _ fs.Node = (*manualImportDir)(nil)
 var _ fs.NodeStringLookuper = (*manualImportDir)(nil)
 var _ fs.HandleReadDirAller = (*manualImportDir)(nil)
-
-var _ fs.Node = (*manualFoldersDir)(nil)
-var _ fs.NodeStringLookuper = (*manualFoldersDir)(nil)
-var _ fs.HandleReadDirAller = (*manualFoldersDir)(nil)
 
 var _ fs.Node = (*manualFile)(nil)
 var _ fs.HandleReader = (*manualFile)(nil)

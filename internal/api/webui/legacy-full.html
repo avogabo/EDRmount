@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<!-- legacy full UI for embed -->
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EDRmount</title>
+  <style>
+    /* Embed-friendly overrides */
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; background: transparent; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .wrap { display: grid; grid-template-columns: 1fr; gap: 16px; max-width: none; margin: 0; padding: 14px; }
+    .card { background: white; border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px; }
+    h1 { margin: 0 0 8px 0; }
+    h2 { margin: 0 0 12px 0; font-size: 16px; }
+    textarea { width: 100%; min-height: 220px; padding: 10px; border-radius: 10px; border: 1px solid #ddd; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .btn { padding: 8px 12px; border: 1px solid #ddd; border-radius: 10px; background: #fff; cursor: pointer; }
+    .btn:hover { background: #f3f3f3; }
+    .tbl { width: 100%; border-collapse: collapse; }
+    .tbl th, .tbl td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+    pre { background: #0b1020; color: #e8eefc; padding: 12px; border-radius: 10px; overflow: auto; min-height: 140px; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>EDRmount</h1>
+      <div class="muted">Dev UI (Settings + Jobs). Port: 1516</div>
+    </div>
+
+    <div class="card">
+      <h2>Upload provider / ngpost</h2>
+      <div class="row">
+        <label><input type="checkbox" id="ng_enabled" /> Enable ngpost</label>
+      </div>
+      <div class="row">
+        <label>Host <input id="ng_host" style="min-width:320px" /></label>
+        <label>Port <input id="ng_port" style="width:90px" type="number" /></label>
+        <label><input type="checkbox" id="ng_ssl" /> SSL</label>
+      </div>
+      <div class="row">
+        <label>User <input id="ng_user" style="min-width:220px" /></label>
+        <label>Pass <input id="ng_pass" style="min-width:220px" type="password" placeholder="(leave blank to keep)" /></label>
+      </div>
+      <div class="row">
+        <label>Groups <input id="ng_groups" style="min-width:520px" placeholder="alt.binaries..." /></label>
+      </div>
+      <div class="row">
+        <label>Connections <input id="ng_connections" style="width:90px" type="number" /></label>
+        <label>Threads <input id="ng_threads" style="width:90px" type="number" /></label>
+        <label>NZB output_dir <input id="ng_output_dir" style="min-width:360px" /></label>
+      </div>
+      <div class="row">
+        <label>tmp_dir <input id="ng_tmp_dir" style="min-width:360px" /></label>
+        <label><input type="checkbox" id="ng_obfuscate" /> Obfuscate</label>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnTestProvider">Test connectivity</button>
+        <button class="btn" id="btnSaveProvider">Save provider</button>
+        <span class="muted" id="provStatus"></span>
+      </div>
+      <div class="muted">Test checks TCP/TLS connectivity only (auth test comes later).</div>
+    </div>
+
+    <div class="card">
+      <h2>Download provider (NNTP)</h2>
+      <div class="row">
+        <label><input type="checkbox" id="dl_enabled" /> Enable download provider</label>
+      </div>
+      <div class="row">
+        <label>Host <input id="dl_host" style="min-width:320px" /></label>
+        <label>Port <input id="dl_port" style="width:90px" type="number" /></label>
+        <label><input type="checkbox" id="dl_ssl" /> SSL</label>
+      </div>
+      <div class="row">
+        <label>User <input id="dl_user" style="min-width:220px" /></label>
+        <label>Pass <input id="dl_pass" style="min-width:220px" type="password" placeholder="(leave blank to keep)" /></label>
+      </div>
+      <div class="row">
+        <label>Connections <input id="dl_connections" style="width:90px" type="number" /></label>
+        <label>Prefetch segments <input id="dl_prefetch" style="width:90px" type="number" /></label>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnTestDownload">Test connectivity</button>
+        <button class="btn" id="btnSaveDownload">Save download provider</button>
+        <span class="muted" id="dlStatus"></span>
+      </div>
+      <div class="muted">Connectivity test only (auth test comes later).</div>
+    </div>
+
+    <div class="card">
+      <h2>Library organization (Filebot-style)</h2>
+      <div class="row">
+        <label><input type="checkbox" id="lib_enabled" /> Enable library mount</label>
+        <label style="margin-left:12px"><input type="checkbox" id="lib_upper" /> Uppercase folders</label>
+      </div>
+      <div class="row">
+        <label>Movies root <input id="lib_movies_root" style="min-width:220px" placeholder="Peliculas" /></label>
+        <label>Series root <input id="lib_series_root" style="min-width:220px" placeholder="SERIES" /></label>
+      </div>
+      <div class="row">
+        <label>Emision folder <input id="lib_emision" style="min-width:220px" placeholder="Emision" /></label>
+        <label>Finalizadas folder <input id="lib_finalizadas" style="min-width:220px" placeholder="Finalizadas" /></label>
+      </div>
+      <div class="row">
+        <label>Movie dir template <input id="lib_movie_dir" style="min-width:820px" /></label>
+      </div>
+      <div class="row">
+        <label>Movie file template <input id="lib_movie_file" style="min-width:820px" /></label>
+      </div>
+      <div class="row">
+        <label>Series dir template <input id="lib_series_dir" style="min-width:820px" /></label>
+      </div>
+      <div class="row">
+        <label>Season folder template <input id="lib_season_dir" style="min-width:420px" /></label>
+        <label>Series file template <input id="lib_series_file" style="min-width:420px" /></label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="tmdb_enabled" /> Enable TMDB metadata</label>
+        <label>TMDB language <input id="tmdb_lang" style="width:120px" placeholder="es-ES" /></label>
+        <label>TMDB API key <input id="tmdb_key" style="min-width:260px" type="password" placeholder="(leave blank to keep)" /></label>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnSaveLibrary">Save library</button>
+        <span class="muted" id="libStatus"></span>
+      </div>
+      <div class="muted">Templates support vars like {title}, {year}, {tmdb_id}, {initial}, {quality}, {series_status}, {season:00}, {episode:00}.</div>
+    </div>
+
+    <div class="card">
+      <h2>Settings (full config.json)</h2>
+      <div class="row">
+        <button class="btn" id="btnReloadConfig">Reload</button>
+        <button class="btn" id="btnSaveConfig">Save</button>
+        <span class="muted" id="configStatus"></span>
+      </div>
+      <textarea id="config" spellcheck="false"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Jobs</h2>
+      <div class="row">
+        <button class="btn" id="btnRefreshJobs">Refresh</button>
+        <label class="muted"><input type="checkbox" id="autoRefresh" checked /> Auto-refresh</label>
+        <span class="muted">(Jobs: 8s · Catalog: 15s)</span>
+      </div>
+      <div id="jobs"></div>
+    </div>
+
+    <div class="card">
+      <h2>Catalog (NZB imports)</h2>
+      <div class="row">
+        <button class="btn" id="btnRefreshCatalog">Refresh</button>
+        <span class="muted">Auto-refresh every 15s (manual refresh available)</span>
+      </div>
+      <div id="catalog"></div>
+    </div>
+
+    <div class="card">
+      <h2>Manual library (Folders)</h2>
+      <div class="row">
+        <label>Current folder <input id="man_dir" style="min-width:320px" value="root" /></label>
+        <button class="btn" id="btnManRefresh">Refresh</button>
+        <span class="muted" id="manStatus"></span>
+      </div>
+
+      <div class="row">
+        <label>New folder <input id="man_new_folder" style="min-width:260px" placeholder="Top 10" /></label>
+        <button class="btn" id="btnManNewFolder">Create</button>
+      </div>
+
+      <div id="manBrowser" class="row" style="align-items:flex-start; gap:16px">
+        <div style="flex:1; min-width:320px">
+          <div class="muted" style="margin-bottom:6px">Folders</div>
+          <div id="manFolders"></div>
+        </div>
+        <div style="flex:2; min-width:420px">
+          <div class="muted" style="margin-bottom:6px">Items</div>
+          <div id="manItems"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Pick import <select id="man_pick_import" style="min-width:520px"></select></label>
+        <button class="btn" id="btnManLoadImport">Load files</button>
+      </div>
+      <div id="manImportFiles"></div>
+
+      <div class="row">
+        <label>Selected item id <input id="man_item_id" style="min-width:360px" placeholder="(click an item above)" /></label>
+        <label>Label <input id="man_item_label" style="min-width:260px" placeholder="Rename" /></label>
+        <label>Move to folder <input id="man_item_move" style="min-width:260px" placeholder="(dest folder id)" /></label>
+        <button class="btn" id="btnManUpdateItem">Update</button>
+        <button class="btn" id="btnManDeleteItem">Delete</button>
+      </div>
+
+      <div class="muted">Tip: the FUSE mount has <code>library-manual/Imports</code> (everything) and <code>library-manual/Folders</code> (your custom virtual folders).</div>
+    </div>
+
+    <div class="card">
+      <h2>Catalog files (selected import)</h2>
+      <pre id="catalogFiles" class="mono">Select an import and click “files”.</pre>
+    </div>
+
+    <div class="card">
+      <h2>Raw view (selected import)</h2>
+      <pre id="rawItems" class="mono">Select an import and click “raw”.</pre>
+    </div>
+
+    <div class="card">
+      <h2>Selected job logs</h2>
+      <pre id="logs" class="mono">Select a job and click “logs”.</pre>
+    </div>
+
+    <div class="card">
+      <h2>Endpoints</h2>
+      <ul>
+        <li><code>/live</code></li>
+        <li><code>/api/v1/config</code> (GET/PUT)</li>
+        <li><code>/api/v1/jobs</code> (GET)</li>
+        <li><code>/api/v1/jobs/&lt;id&gt;/logs</code> (GET)</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="/webui/app.js"></script>
+  <script src="/webui/manual.js"></script>
+  <script src="/webui/download.js"></script>
+</body>
+</html>

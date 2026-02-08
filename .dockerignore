@@ -1,0 +1,21 @@
+.git
+.gitignore
+**/.DS_Store
+
+# local runtime data (shouldn't be part of build context)
+cache/
+host/
+backups/
+config/
+
+# build artifacts
+**/dist/
+**/build/
+**/*.log
+
+# node deps (if present)
+**/node_modules/
+
+# editor/OS junk
+**/.idea/
+**/.vscode/

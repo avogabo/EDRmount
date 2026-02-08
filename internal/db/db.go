@@ -117,6 +117,49 @@ func (d *DB) migrate() error {
 			file_idx INTEGER NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_manual_items_dir ON manual_items(dir_id);`,
+
+		// Auto-library overrides (so Plex can still point at library-auto)
+		`CREATE TABLE IF NOT EXISTS library_overrides (
+			import_id TEXT NOT NULL,
+			file_idx INTEGER NOT NULL,
+			kind TEXT NOT NULL, -- "movie" | "tv" (reserved)
+			title TEXT NOT NULL,
+			year INTEGER NOT NULL,
+			quality TEXT NOT NULL,
+			tmdb_id INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY(import_id, file_idx)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_library_overrides_updated ON library_overrides(updated_at);`,
+
+		`CREATE TABLE IF NOT EXISTS library_review_dismissed (
+			import_id TEXT NOT NULL,
+			file_idx INTEGER NOT NULL,
+			dismissed_at INTEGER NOT NULL,
+			PRIMARY KEY(import_id, file_idx)
+		);`,
+
+		// Health scanning state
+		`CREATE TABLE IF NOT EXISTS health_nzb_state (
+			path TEXT PRIMARY KEY,
+			status TEXT NOT NULL, -- "unknown"|"ok"|"broken"|"repairing"|"repaired"|"error"
+			last_checked_at INTEGER,
+			last_error TEXT,
+			last_repair_job_id TEXT,
+			last_repaired_at INTEGER
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_health_nzb_status ON health_nzb_state(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_health_nzb_checked ON health_nzb_state(last_checked_at);`,
+
+		`CREATE TABLE IF NOT EXISTS health_scan_state (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			run_id TEXT,
+			cursor_path TEXT,
+			run_started_at INTEGER,
+			last_chunk_finished_at INTEGER,
+			last_run_completed_at INTEGER
+		);`,
+		`INSERT OR IGNORE INTO health_scan_state(id) VALUES (1);`,
 	}
 	for _, s := range stmts {
 		if _, err := d.SQL.Exec(s); err != nil {

@@ -130,6 +130,10 @@ func (n *libDir) rows(ctx context.Context) ([]libRow, error) {
 				r.Filename = fmt.Sprintf("file_%04d.bin", r.Idx)
 			}
 		}
+		// Auto library: only expose MKV payloads.
+		if strings.ToLower(filepath.Ext(r.Filename)) != ".mkv" {
+			continue
+		}
 		out = append(out, r)
 	}
 	return out, nil
@@ -138,6 +142,37 @@ func (n *libDir) rows(ctx context.Context) ([]libRow, error) {
 func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	l := n.fs.Cfg.Library.Defaults()
 	g := library.GuessFromFilename(row.Filename)
+
+	// Overrides: allow manual correction while still exposing it in library-auto.
+	// (Plex can continue to point at library-auto.)
+	{
+		var kind, title, quality string
+		var year, tmdbID int
+		err := n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT kind,title,year,quality,tmdb_id FROM library_overrides WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&kind, &title, &year, &quality, &tmdbID)
+		if err == nil {
+			kind = strings.TrimSpace(kind)
+			if kind == "" {
+				kind = "movie"
+			}
+			// For now, implement movie overrides (tv reserved).
+			if kind == "movie" {
+				if strings.TrimSpace(title) != "" {
+					g.Title = strings.TrimSpace(title)
+				}
+				if year > 0 {
+					g.Year = year
+				}
+				if strings.TrimSpace(quality) != "" {
+					g.Quality = strings.TrimSpace(quality)
+				}
+				// store tmdb id in a local var via vars below
+				// (we still try to resolve if tmdbID==0 to enrich titles, but it's optional)
+				varsTMDBOverride := tmdbID
+				_ = varsTMDBOverride
+			}
+		}
+	}
+
 	initial := library.InitialFolder(g.Title)
 	quality := g.Quality
 	ext := g.Ext
@@ -168,7 +203,13 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	if !g.IsSeries {
 		movieTitle := g.Title
 		tmdbID := 0
+		// Prefer explicit override tmdb_id if present.
+		_ = n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT tmdb_id FROM library_overrides WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&tmdbID)
+		if tmdbID < 0 {
+			tmdbID = 0
+		}
 		if n.fs.resolver != nil {
+			// If tmdbID already set, we still allow resolver to enrich title/year best-effort.
 			if m, ok := n.fs.resolver.ResolveMovie(ctxbg(ctx), movieTitle, year); ok {
 				movieTitle = m.Title
 				y := m.ReleaseYear()

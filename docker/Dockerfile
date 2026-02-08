@@ -5,8 +5,11 @@ WORKDIR /src
 COPY . .
 RUN go build -o /out/edrmount ./cmd/edrmount
 
+# Health tool (included in image)
+RUN go install github.com/javi11/nzb-repair@latest
+
 FROM ubuntu:jammy
-RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 && rm -rf /var/lib/apt/lists/*
 
 # ngpost's bundled Qt expects OpenSSL 1.1 (libcrypto.so.1.1/libssl.so.1.1).
 # Ubuntu jammy ships OpenSSL 3, so we temporarily add focal to install libssl1.1.
@@ -16,7 +19,9 @@ RUN set -e; \
   apt-get install -y --no-install-recommends libssl1.1; \
   rm -f /etc/apt/sources.list.d/focal.list; \
   rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /out/edrmount /usr/local/bin/edrmount
+COPY --from=build /go/bin/nzb-repair /usr/local/bin/nzb-repair
 
 # ---- ngpost (bundled AppImage contents) ----
 # We bundle the extracted squashfs-root to avoid system Qt deps.
@@ -38,8 +43,14 @@ RUN printf '%s\n' \
   > /usr/local/bin/ngpost \
   && chmod +x /usr/local/bin/ngpost
 
+# ---- nyuu (Nyuu-Obfuscation fork) ----
+# Nyuu is node-based. We install it via npm from the fork repo.
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm git python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+RUN npm install -g --production --unsafe-perm git+https://github.com/Antidote2151/Nyuu-Obfuscation.git
+
 # runtime dirs
-RUN mkdir -p /config /host /cache
+RUN mkdir -p /config /host /cache /backups
 EXPOSE 1516
 
 # FUSE requires these at runtime:
@@ -47,4 +58,4 @@ EXPOSE 1516
 # - --cap-add SYS_ADMIN
 # - potentially apparmor:unconfined on Unraid
 
-ENTRYPOINT ["/usr/local/bin/edrmount","-config","/config/config.json"]
+ENTRYPOINT ["/usr/local/bin/edrmount","-fuse","-config","/config/config.json"]

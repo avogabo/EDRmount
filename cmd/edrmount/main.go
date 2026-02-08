@@ -5,10 +5,13 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gaby/EDRmount/internal/api"
+	"github.com/gaby/EDRmount/internal/backup"
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/fusefs"
+	"github.com/gaby/EDRmount/internal/health"
 	"github.com/gaby/EDRmount/internal/runner"
 	"github.com/gaby/EDRmount/internal/watch"
 )
@@ -17,7 +20,7 @@ func main() {
 	var cfgPath string
 	var enableFuse bool
 	flag.StringVar(&cfgPath, "config", "/config/config.json", "path to config file (json)")
-	flag.BoolVar(&enableFuse, "fuse", false, "enable FUSE raw mount at <mount_point>/raw")
+	flag.BoolVar(&enableFuse, "fuse", true, "enable FUSE mounts at <mount_point>/*")
 	flag.Parse()
 
 	cfg, err := config.Load(cfgPath)
@@ -29,6 +32,15 @@ func main() {
 	}
 
 	dbPath := "/config/edrmount.db"
+	// One-shot DB reset marker (created by API/UI): delete ONLY the DB files, keep config.json.
+	resetMarker := "/config/.reset-db"
+	if _, err := os.Stat(resetMarker); err == nil {
+		_ = os.Remove(dbPath)
+		_ = os.Remove(dbPath + "-wal")
+		_ = os.Remove(dbPath + "-shm")
+		_ = os.Remove(resetMarker)
+	}
+
 	srv, closeFn, err := api.New(cfg, api.Options{ConfigPath: cfgPath, DBPath: dbPath})
 	if err != nil {
 		log.Fatalf("api init: %v", err)
@@ -39,17 +51,47 @@ func main() {
 		}
 	}()
 
-	// Start background watcher + runner (stubs for now).
+	// Start background watcher + runner.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if srvJobs := srv.Jobs(); srvJobs != nil {
-		w := watch.New(srvJobs, cfg.Paths.NzbInbox, cfg.Paths.MediaInbox)
-		go w.Run(ctx)
+		// Start watchers (NZB/media) and runner (job executor) independently.
+		if cfg.Watch.NZB.Enabled || cfg.Watch.Media.Enabled {
+			w := watch.New(srvJobs, cfg.Watch.NZB, cfg.Watch.Media)
+			go w.Run(ctx)
+		}
 
-		r := runner.New(srvJobs)
-		r.Mode = cfg.Runner.Mode
-		r.NgPost = cfg.NgPost
-		go r.Run(ctx)
+		if cfg.Runner.Enabled {
+			r := runner.New(srvJobs)
+			r.Mode = cfg.Runner.Mode
+			r.GetConfig = srv.Config
+			go r.Run(ctx)
+		}
+
+		// Backup scheduler (reads latest config from the API server)
+		sched := &backup.Scheduler{
+			DBPath: dbPath,
+			Cfg: func() backup.Config {
+				c := srv.Config().Backups
+				return backup.Config{
+					Enabled:    c.Enabled,
+					Dir:        c.Dir,
+					EveryMins:  c.EveryMins,
+					Keep:       c.Keep,
+					CompressGZ: c.CompressGZ,
+				}
+			},
+		}
+		go sched.Run(ctx)
+
+		// Health scan scheduler (enqueues health_scan_nzb according to config)
+		hs := &health.Scheduler{
+			Jobs: srvJobs,
+			Cfg: func() config.HealthConfig {
+				return srv.Config().Health
+			},
+		}
+		go hs.Run(ctx)
 
 		if enableFuse {
 			if _, err := fusefs.MountRaw(ctx, cfg, srvJobs); err != nil {

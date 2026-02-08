@@ -32,7 +32,8 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	st := streamer.New(s.cfg.Download, s.jobs, s.cfg.Paths.CacheDir, s.cfg.Paths.CacheMaxBytes)
+	cfg := s.Config()
+	st := streamer.New(cfg.Download, s.jobs, cfg.Paths.CacheDir, cfg.Paths.CacheMaxBytes)
 
 	// Find matching file_idx by subject-derived filename and also get total bytes.
 	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT idx,filename,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
@@ -128,7 +129,8 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
 		w.WriteHeader(http.StatusPartialContent)
-		prefetchSegs := s.cfg.Download.PrefetchSegments
+		cfg := s.Config()
+		prefetchSegs := cfg.Download.PrefetchSegments
 		if prefetchSegs < 0 {
 			prefetchSegs = 0
 		}

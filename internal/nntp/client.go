@@ -134,14 +134,39 @@ func (c *Client) Noop() error {
 
 // BodyByMessageID fetches the body lines (dot-terminated) for a message-id.
 // Returns raw lines (without CRLF), with dot-stuffing already unescaped.
-func (c *Client) BodyByMessageID(messageID string) ([]string, error) {
-	c.setDeadline()
+func (c *Client) normalizeMessageID(messageID string) string {
+	messageID = strings.TrimSpace(messageID)
 	if !strings.HasPrefix(messageID, "<") {
 		messageID = "<" + messageID
 	}
 	if !strings.HasSuffix(messageID, ">") {
 		messageID = messageID + ">"
 	}
+	return messageID
+}
+
+// StatByMessageID checks if an article exists without downloading its body.
+// Returns nil if the server reports it exists.
+func (c *Client) StatByMessageID(messageID string) error {
+	c.setDeadline()
+	messageID = c.normalizeMessageID(messageID)
+	if err := c.send("STAT " + messageID); err != nil {
+		return err
+	}
+	line, err := c.readLine()
+	if err != nil {
+		return err
+	}
+	// 223 = article exists
+	if strings.HasPrefix(line, "223") {
+		return nil
+	}
+	return fmt.Errorf("STAT failed: %s", line)
+}
+
+func (c *Client) BodyByMessageID(messageID string) ([]string, error) {
+	c.setDeadline()
+	messageID = c.normalizeMessageID(messageID)
 	if err := c.send("BODY " + messageID); err != nil {
 		return nil, err
 	}

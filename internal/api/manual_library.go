@@ -27,6 +27,93 @@ type manualItem struct {
 }
 
 func (s *Server) registerManualLibraryRoutes() {
+	// Path breadcrumb (root -> current)
+	s.mux.HandleFunc("/api/v1/manual/path", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if s.jobs == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "db not configured"})
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		dir := strings.TrimSpace(r.URL.Query().Get("dir_id"))
+		if dir == "" {
+			dir = "root"
+		}
+
+		// Build [current..root] then reverse.
+		out := make([]manualDir, 0, 8)
+		if dir == "root" {
+			out = append(out, manualDir{ID: "root", ParentID: "", Name: "root"})
+			_ = json.NewEncoder(w).Encode(out)
+			return
+		}
+
+		cur := dir
+		seen := map[string]bool{}
+		for {
+			if cur == "" || cur == "root" {
+				break
+			}
+			if seen[cur] {
+				// Cycle protection
+				break
+			}
+			seen[cur] = true
+
+			row := s.jobs.DB().SQL.QueryRowContext(r.Context(), `SELECT id,parent_id,name FROM manual_dirs WHERE id=?`, cur)
+			var d manualDir
+			if err := row.Scan(&d.ID, &d.ParentID, &d.Name); err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+				return
+			}
+			out = append(out, d)
+			cur = d.ParentID
+		}
+		// Ensure root at the beginning
+		out = append(out, manualDir{ID: "root", ParentID: "", Name: "root"})
+
+		// reverse
+		for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+			out[i], out[j] = out[j], out[i]
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
+	// All dirs (for UI pickers)
+	s.mux.HandleFunc("/api/v1/manual/dirs/all", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if s.jobs == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "db not configured"})
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT id,parent_id,name FROM manual_dirs ORDER BY name`)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+		out := make([]manualDir, 0)
+		for rows.Next() {
+			var d manualDir
+			if err := rows.Scan(&d.ID, &d.ParentID, &d.Name); err != nil {
+				continue
+			}
+			out = append(out, d)
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
 	// Dirs list/create
 	s.mux.HandleFunc("/api/v1/manual/dirs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
