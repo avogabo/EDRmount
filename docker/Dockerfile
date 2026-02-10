@@ -66,17 +66,11 @@ RUN printf '%s\n' \
   > /usr/local/bin/ngpost \
   && chmod +x /usr/local/bin/ngpost
 
-# ---- nyuu (optional) ----
-# Nyuu is node-based. Because node/npm install can be flaky on CI and nyuu is optional,
-# we gate it behind a build arg.
-ARG INSTALL_NYUU=0
-RUN if [ "$INSTALL_NYUU" = "1" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends nodejs npm git python3 make g++ && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g --production --unsafe-perm git+https://github.com/Antidote2151/Nyuu-Obfuscation.git ; \
-  else \
-    echo "Skipping nyuu install (INSTALL_NYUU=0)" ; \
-  fi
+# ---- nyuu (Nyuu-Obfuscation fork) ----
+# Nyuu is node-based. We install it via npm from the fork repo.
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm git python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+RUN npm install -g --production --unsafe-perm git+https://github.com/Antidote2151/Nyuu-Obfuscation.git
 
 # runtime dirs
 RUN mkdir -p /config /host /cache /backups
