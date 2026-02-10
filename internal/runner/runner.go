@@ -210,6 +210,34 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				// par2create -r<percent> <parBase>.par2 <file>
 				args := []string{fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), parBase + ".par2", linkPath}
 				_ = r.jobs.AppendLog(ctx, j.ID, "par2create: par2create "+strings.Join(args, " "))
+				// If par2create does not emit percentages, keep UI alive by ticking progress
+				// (avoid looking stuck at 5% for large files).
+				parStart := time.Now()
+				tickDone := make(chan struct{})
+				defer close(tickDone)
+				go func() {
+					t := time.NewTicker(10 * time.Second)
+					defer t.Stop()
+					p := 5
+					for {
+						select {
+						case <-tickDone:
+							return
+						case <-ctx.Done():
+							return
+						case <-t.C:
+							// creep up to 19 while PAR is running
+							if p < 19 {
+								p++
+								emitProgress(p)
+							}
+							// emit a heartbeat line so users see it is still working
+							d := time.Since(parStart).Round(time.Second)
+							_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: still generating (elapsed %s)", d))
+						}
+					}
+				}()
+
 				err := runCommand(ctx, func(line string) {
 					clean := strings.TrimSpace(line)
 					_ = r.jobs.AppendLog(ctx, j.ID, clean)
