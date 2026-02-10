@@ -208,7 +208,14 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			// (avoid looking stuck at 5% for large files).
 			parStart := time.Now()
 			tickDone := make(chan struct{})
-			defer close(tickDone)
+			stopTick := func() {
+				select {
+				case <-tickDone:
+					// already closed
+				default:
+					close(tickDone)
+				}
+			}
 			go func() {
 				t := time.NewTicker(10 * time.Second)
 				defer t.Stop()
@@ -243,6 +250,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 					}
 				}
 			}, "par2", args...)
+			stopTick()
 			if err != nil {
 				_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2create failed (continuing without PAR): "+err.Error())
 				parEnabled = false
@@ -294,8 +302,8 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 					_ = r.jobs.SetFailed(ctx, j.ID, msg)
 					return
 				}
-				// Move staging NZB into RAW only after the uploader has finished.
-				emitPhase("Moviendo NZB a RAW (Move to RAW)")
+				// Move staging NZB into the watched NZB inbox only after the uploader has finished.
+				emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
 				emitProgress(99)
 				_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
 				if err != nil {
@@ -410,7 +418,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				if actualNZB != "" {
 					produced = actualNZB
 				}
-				emitPhase("Moviendo NZB a RAW (Move to RAW)")
+				emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
 				emitProgress(99)
 				_, err = moveNZBStagingToFinal(produced, finalNZB)
 				if err != nil {
