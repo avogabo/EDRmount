@@ -209,26 +209,27 @@
           </div>
 
           <div id="autoPane">
-            <div id="importsBox" class="list" style="padding:12px; margin-bottom:10px">
-              <div class="row" style="justify-content:space-between">
-                <div>
-                  <b>📦 Imports recientes (Recent imports)</b>
-                  <div class="muted" style="margin-top:4px">Borrar global elimina el import de la biblioteca (auto+manual). No borra el NZB del disco.</div>
-                </div>
-                <button class="btn" id="btnImportsRefresh">Actualizar</button>
-              </div>
-              <div class="list" style="margin-top:10px">
-                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 150px;">
-                  <div>Import (NZB)</div>
+            <div class="row" style="margin-top:10px">
+              <div class="crumbs" id="autoCrumbs"></div>
+              <button class="btn" id="btnAutoUp">Arriba (Up)</button>
+              <button class="btn" id="btnAutoRefresh">Actualizar (Refresh)</button>
+              <span class="muted" id="autoStatus"></span>
+            </div>
+
+            <div class="grid">
+              <div class="list">
+                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 70px;">
+                  <div>Nombre (Name)</div>
                   <div class="mono">Size</div>
-                  <div class="mono">ImportedAt</div>
+                  <div class="mono">ModTime</div>
                   <div>Acción</div>
                 </div>
-                <div id="importsList"></div>
+                <div id="autoList"></div>
               </div>
             </div>
 
-            <div id="reviewBox" class="list" style="padding:12px; display:none">
+            <!-- Pending review below the main library listing -->
+            <div id="reviewBox" class="list" style="padding:12px; display:none; margin-top:10px">
               <div class="row" style="justify-content:space-between">
                 <div>
                   <b>⚠ Pendiente de revisión (Needs review)</b>
@@ -276,25 +277,6 @@
                     <span class="muted" id="fixStatus"></span>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div class="crumbs" id="autoCrumbs"></div>
-              <button class="btn" id="btnAutoUp">Arriba (Up)</button>
-              <button class="btn" id="btnAutoRefresh">Actualizar (Refresh)</button>
-              <span class="muted" id="autoStatus"></span>
-            </div>
-
-            <div class="grid">
-              <div class="list">
-                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 70px;">
-                  <div>Nombre (Name)</div>
-                  <div class="mono">Size</div>
-                  <div class="mono">ModTime</div>
-                  <div>Acción</div>
-                </div>
-                <div id="autoList"></div>
               </div>
             </div>
           </div>

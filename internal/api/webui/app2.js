@@ -243,7 +243,7 @@ function showPage(name) {
 }
 
 // Library explorer (FUSE)
-const AUTO_ROOT = '/mount/library-auto';
+let AUTO_ROOT = '/mount/library-auto';
 const MAN_ROOT = '/mount/library-manual'; // legacy label; UI now uses DB-backed manual tree
 let autoPath = AUTO_ROOT;
 let manPath = MAN_ROOT;
@@ -753,52 +753,8 @@ function qualityFromGuess(q) {
   return '1080';
 }
 
-async function refreshImports() {
-  const list = document.getElementById('importsList');
-  if (!list) return;
-  list.innerHTML = '';
-  const items = await apiGet('/api/v1/catalog/imports');
-  if (!items || items.length === 0) {
-    list.innerHTML = '<div class="muted" style="padding:10px">No hay imports.</div>';
-    return;
-  }
-  for (const it of items) {
-    const row = el('div', { class: 'listRow' });
-    const name = (it.path || '').split('/').pop() || it.id.slice(0, 8);
-    row.appendChild(el('div', { class: 'mono', text: name }));
-    row.appendChild(el('div', { class: 'mono muted', text: fmtSize(it.total_bytes || 0) }));
-    row.appendChild(el('div', { class: 'mono muted', text: fmtTime(it.imported_at) }));
-
-    const cell = el('div');
-    const btnDel = el('button', { class: 'btn danger', text: 'Borrar global' });
-    btnDel.onclick = async (ev) => {
-      ev.stopPropagation();
-      const ok = confirm('¿Eliminar este import de la biblioteca (global)?\n\n- Desaparece de library-auto y library-manual\n- NO borra el NZB ni PAR2 del disco\n\n¿Continuar?');
-      if (!ok) return;
-      await apiPostJson('/api/v1/catalog/imports/delete', { id: it.id });
-      await refreshImports();
-      await refreshList('auto');
-    };
-
-    const btnFull = el('button', { class: 'btn danger', text: 'Borrado completo' });
-    btnFull.onclick = async (ev) => {
-      ev.stopPropagation();
-      const ok = confirm('⚠ Borrado completo (irreversible)\n\n- Borra de la BD\n- Mueve NZB a /host/inbox/.trash\n- Mueve PAR2 a /host/inbox/.trash\n\n¿Continuar?');
-      if (!ok) return;
-      const typed = prompt('Escribe BORRAR para confirmar');
-      if ((typed || '').trim().toUpperCase() !== 'BORRAR') return;
-      await apiPostJson('/api/v1/catalog/imports/delete_full', { id: it.id });
-      await refreshImports();
-      await refreshList('auto');
-    };
-
-    cell.appendChild(btnDel);
-    cell.appendChild(btnFull);
-    row.appendChild(cell);
-
-    list.appendChild(row);
-  }
-}
+// Imports panel removed from UI (kept workflow actions in Biblioteca instead).
+async function refreshImports() { /* no-op */ }
 
 async function refreshReview() {
   try {
@@ -989,15 +945,21 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   showPage('library');
 
+  // Resolve library-auto root from server (avoid path mismatches across deployments)
+  try {
+    const r = await apiGet('/api/v1/library/auto/root');
+    if (r && r.root) {
+      AUTO_ROOT = String(r.root);
+      autoPath = AUTO_ROOT;
+    }
+  } catch (_) {}
+
   // Tabs
   document.getElementById('tabAuto').onclick = () => setLibraryTab('auto');
   document.getElementById('tabManual').onclick = () => setLibraryTab('manual');
   setLibraryTab('auto');
 
-  // Imports UI
-  if (document.getElementById('btnImportsRefresh')) {
-    document.getElementById('btnImportsRefresh').onclick = () => refreshImports().catch(() => {});
-  }
+  // Imports UI removed (actions live in Biblioteca)
 
   // Review UI
   document.getElementById('btnReviewRefresh').onclick = () => refreshReview().catch(() => {});
@@ -1094,7 +1056,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnLogsRefresh').onclick = () => refreshLogsJobs().catch(() => {});
   }
 
-  // Load imports + review initially
-  refreshImports().catch(() => {});
+  // Load review initially
   refreshReview().catch(() => {});
 });
