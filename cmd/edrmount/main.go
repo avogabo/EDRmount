@@ -23,6 +23,11 @@ func main() {
 	flag.BoolVar(&enableFuse, "fuse", true, "enable FUSE mounts at <mount_point>/*")
 	flag.Parse()
 
+	// First-run UX: if config.json is missing, create a safe default so the service can boot.
+	if err := config.EnsureConfigFile(cfgPath); err != nil {
+		log.Fatalf("config bootstrap: %v", err)
+	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("config load: %v", err)
