@@ -6,7 +6,8 @@ COPY . .
 RUN go build -o /out/edrmount ./cmd/edrmount
 
 # Health tool (included in image)
-RUN go install github.com/javi11/nzb-repair@latest
+# Pin version for reproducible builds (avoid cache bust / upstream breakage)
+RUN go install github.com/javi11/nzb-repair@v0.0.3
 
 FROM ubuntu:jammy AS runtime
 RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 && rm -rf /var/lib/apt/lists/*
@@ -25,7 +26,8 @@ FROM ubuntu:jammy AS par2build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git build-essential autoconf automake libtool pkg-config ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-RUN git clone --depth 1 https://github.com/animetosho/par2cmdline-turbo.git /src/par2cmdline-turbo
+ARG PAR2_TURBO_REF=v1.4.0
+RUN git clone --depth 1 --branch "${PAR2_TURBO_REF}" https://github.com/animetosho/par2cmdline-turbo.git /src/par2cmdline-turbo
 WORKDIR /src/par2cmdline-turbo
 RUN test -f configure || ./automake.sh
 RUN ./configure --prefix=/usr/local
