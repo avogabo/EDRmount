@@ -294,7 +294,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				// Move staging NZB into RAW only after the uploader has finished.
 				emitPhase("Moviendo NZB a RAW (Move to RAW)")
 				emitProgress(99)
-				movedTo, err := moveNZBStagingToFinal(stagingNZB, finalNZB)
+				_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
 				if err != nil {
 					msg := err.Error()
 					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
@@ -343,7 +343,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				}
 
 				_ = r.jobs.SetDone(ctx, j.ID)
-				_, _ = r.jobs.Enqueue(ctx, jobs.TypeImport, map[string]string{"path": movedTo})
+				// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
 				return
 			}
 			if ng.Enabled {
@@ -409,7 +409,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				}
 				emitPhase("Moviendo NZB a RAW (Move to RAW)")
 				emitProgress(99)
-				movedTo, err := moveNZBStagingToFinal(produced, finalNZB)
+				_, err = moveNZBStagingToFinal(produced, finalNZB)
 				if err != nil {
 					msg := err.Error()
 					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
@@ -418,7 +418,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				}
 				emitProgress(100)
 				_ = r.jobs.SetDone(ctx, j.ID)
-				_, _ = r.jobs.Enqueue(ctx, jobs.TypeImport, map[string]string{"path": movedTo})
+				// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
 				return
 			}
 			if ng.Enabled {
