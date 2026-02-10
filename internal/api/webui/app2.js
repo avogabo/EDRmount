@@ -154,9 +154,11 @@ async function refreshList(kind) {
         refreshList(kind).catch(err => setStatus(statusId, String(err)));
       };
     } else if (isAuto && e.import_id) {
-      // Context menu for global delete actions (library-auto)
-      row.oncontextmenu = async (ev) => {
-        ev.preventDefault();
+      // Mobile-friendly actions: add a small button instead of relying on right-click.
+      const actions = el('button', { class: 'btn', type: 'button', text: '⋮' });
+      actions.style.padding = '6px 10px';
+      actions.onclick = async (ev) => {
+        ev.stopPropagation();
         const choice = prompt('Acción:\n1 = Borrar global (BD)\n2 = Borrado completo (BD+NZB+PAR2)\n\nEscribe 1 o 2');
         if (!choice) return;
         if (String(choice).trim() === '1') {
@@ -176,6 +178,7 @@ async function refreshList(kind) {
           return;
         }
       };
+      row.appendChild(actions);
     }
 
     list.appendChild(row);
