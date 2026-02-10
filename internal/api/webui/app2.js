@@ -362,19 +362,45 @@ async function loadUploadSettings() {
   document.getElementById('setNntpThreads').value = (n.threads != null) ? n.threads : 2;
   document.getElementById('setNntpGroups').value = n.groups || '';
 
-  // Library-auto templates
+  // Library-auto templates (display + preview)
   const L = (cfg.library || {});
   document.getElementById('setLibEnabled').checked = (L.enabled !== false);
   document.getElementById('setLibUpper').checked = !!L.uppercase_folders;
-  document.getElementById('setLibMoviesRoot').value = L.movies_root || '';
-  document.getElementById('setLibSeriesRoot').value = L.series_root || '';
-  document.getElementById('setLibEmision').value = L.emision_folder || '';
-  document.getElementById('setLibFinal').value = L.finalizadas_folder || '';
-  document.getElementById('setLibMovieDirT').value = L.movie_dir_template || '';
-  document.getElementById('setLibMovieFileT').value = L.movie_file_template || '';
-  document.getElementById('setLibSeriesDirT').value = L.series_dir_template || '';
-  document.getElementById('setLibSeasonT').value = L.season_folder_template || '';
-  document.getElementById('setLibSeriesFileT').value = L.series_file_template || '';
+
+  const setText = (id, t) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(t || '');
+  };
+  setText('tplMovieDir', L.movie_dir_template || '');
+  setText('tplMovieFile', L.movie_file_template || '');
+  setText('tplSeriesDir', L.series_dir_template || '');
+  setText('tplSeasonDir', L.season_folder_template || '');
+  setText('tplSeriesFile', L.series_file_template || '');
+
+  // Copy buttons
+  const bindCopy = (btnId, srcId) => {
+    const b = document.getElementById(btnId);
+    if (!b) return;
+    b.onclick = async () => {
+      const src = document.getElementById(srcId);
+      const txt = src ? (src.textContent || '') : '';
+      try { await navigator.clipboard.writeText(txt); } catch (_) {}
+    };
+  };
+  bindCopy('btnCopyMovieDir', 'tplMovieDir');
+  bindCopy('btnCopyMovieFile', 'tplMovieFile');
+  bindCopy('btnCopySeriesDir', 'tplSeriesDir');
+  bindCopy('btnCopySeasonDir', 'tplSeasonDir');
+  bindCopy('btnCopySeriesFile', 'tplSeriesFile');
+
+  // Preview (realistic examples)
+  try {
+    const prev = await apiGet('/api/v1/library/templates/preview');
+    setText('tplPrevMovie', (prev && prev.movie && prev.movie.example_file) ? prev.movie.example_file : '');
+    setText('tplPrevSeries', (prev && prev.series && prev.series.example_file) ? prev.series.example_file : '');
+  } catch (e) {
+    // ignore preview failure
+  }
 
   // Plex (solo library-auto)
   const p = (cfg.plex || {});
@@ -456,19 +482,10 @@ async function saveUploadSettings() {
     cfg.ngpost.threads = _int('setNntpThreads', 2);
     cfg.ngpost.groups = _val('setNntpGroups');
 
-    // Library-auto templates
+    // Library-auto (basic toggles; templates are advanced via full config page for now)
     cfg.library = cfg.library || {};
     cfg.library.enabled = _bool('setLibEnabled');
     cfg.library.uppercase_folders = _bool('setLibUpper');
-    cfg.library.movies_root = _val('setLibMoviesRoot');
-    cfg.library.series_root = _val('setLibSeriesRoot');
-    cfg.library.emision_folder = _val('setLibEmision');
-    cfg.library.finalizadas_folder = _val('setLibFinal');
-    cfg.library.movie_dir_template = _val('setLibMovieDirT');
-    cfg.library.movie_file_template = _val('setLibMovieFileT');
-    cfg.library.series_dir_template = _val('setLibSeriesDirT');
-    cfg.library.season_folder_template = _val('setLibSeasonT');
-    cfg.library.series_file_template = _val('setLibSeriesFileT');
 
     // Plex (solo library-auto)
     cfg.plex = cfg.plex || {};

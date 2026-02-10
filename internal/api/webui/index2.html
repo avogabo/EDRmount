@@ -544,60 +544,72 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Library-auto (plantillas tipo Filebot)</b>
-              <div class="muted" style="margin-top:6px">Configura cómo se construyen las rutas virtuales en <b>library-auto</b>.</div>
+              <b>Library-auto (Filebot-ish)</b>
+              <div class="muted" style="margin-top:6px">Estructura de rutas virtuales que ve Plex (apunta Plex a <span class="mono">library-auto</span>).</div>
 
               <div class="row" style="margin-top:12px">
                 <label class="muted"><input type="checkbox" id="setLibEnabled" /> Activar library-auto (Enable)</label>
                 <label class="muted" style="margin-left:14px"><input type="checkbox" id="setLibUpper" /> Carpetas en MAYÚSCULAS</label>
               </div>
 
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Movies root
-                  <input id="setLibMoviesRoot" style="min-width:220px; margin-left:8px" placeholder="PELICULAS" />
-                </label>
-                <label class="muted">Series root
-                  <input id="setLibSeriesRoot" style="min-width:220px; margin-left:8px" placeholder="SERIES" />
-                </label>
+              <div class="row" style="margin-top:12px">
+                <div class="muted"><b>Templates actuales</b> (puedes copiarlos y modificarlos si eres pro):</div>
               </div>
 
               <div class="row" style="margin-top:10px">
-                <label class="muted">Emisión folder
-                  <input id="setLibEmision" style="min-width:220px; margin-left:8px" placeholder="EMISION" />
-                </label>
-                <label class="muted">Finalizadas folder
-                  <input id="setLibFinal" style="min-width:220px; margin-left:8px" placeholder="FINALIZADAS" />
-                </label>
+                <div class="muted" style="min-width:120px"><b>Pelis</b></div>
+              </div>
+              <div class="row" style="margin-top:6px">
+                <div class="muted" style="min-width:140px">Carpeta</div>
+                <code id="tplMovieDir" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
+                <button class="btn" id="btnCopyMovieDir">Copiar</button>
+              </div>
+              <div class="row" style="margin-top:6px">
+                <div class="muted" style="min-width:140px">Archivo</div>
+                <code id="tplMovieFile" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
+                <button class="btn" id="btnCopyMovieFile">Copiar</button>
               </div>
 
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Movie dir template
-                  <input id="setLibMovieDirT" style="min-width:520px; margin-left:8px" placeholder="{movies_root}/{quality}/{initial}/{title} ({year}) tmdb-{tmdb_id}" />
-                </label>
+              <div class="row" style="margin-top:12px">
+                <div class="muted" style="min-width:120px"><b>Series</b></div>
               </div>
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Movie file template
-                  <input id="setLibMovieFileT" style="min-width:520px; margin-left:8px" placeholder="{title} ({year}) tmdb-{tmdb_id}{ext}" />
-                </label>
+              <div class="row" style="margin-top:6px">
+                <div class="muted" style="min-width:140px">Carpeta serie</div>
+                <code id="tplSeriesDir" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
+                <button class="btn" id="btnCopySeriesDir">Copiar</button>
               </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Series dir template
-                  <input id="setLibSeriesDirT" style="min-width:520px; margin-left:8px" placeholder="{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}" />
-                </label>
+              <div class="row" style="margin-top:6px">
+                <div class="muted" style="min-width:140px">Carpeta temporada</div>
+                <code id="tplSeasonDir" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
+                <button class="btn" id="btnCopySeasonDir">Copiar</button>
               </div>
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Season folder template
-                  <input id="setLibSeasonT" style="min-width:520px; margin-left:8px" placeholder="TEMPORADA {season:00}" />
-                </label>
-              </div>
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Series file template
-                  <input id="setLibSeriesFileT" style="min-width:520px; margin-left:8px" placeholder="{season:00}x{episode:00} - {episode_title}{ext}" />
-                </label>
+              <div class="row" style="margin-top:6px">
+                <div class="muted" style="min-width:140px">Archivo episodio</div>
+                <code id="tplSeriesFile" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
+                <button class="btn" id="btnCopySeriesFile">Copiar</button>
               </div>
 
-              <div class="muted" style="margin-top:10px">Tip: esto controla lo que ve Plex (apunta Plex a <span class="mono">library-auto</span>).</div>
+              <div class="row" style="margin-top:14px">
+                <div class="muted"><b>Ejemplos reales</b> (preview)</div>
+              </div>
+              <div class="row" style="margin-top:6px">
+                <code id="tplPrevMovie" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:980px"></code>
+              </div>
+              <div class="row" style="margin-top:6px">
+                <code id="tplPrevSeries" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:980px"></code>
+              </div>
+
+              <div class="row" style="margin-top:14px">
+                <div class="muted"><b>Variables disponibles</b></div>
+              </div>
+              <div class="muted" style="margin-top:6px; line-height:1.5">
+                <span class="mono">{title}</span>, <span class="mono">{year}</span>, <span class="mono">{ext}</span>, <span class="mono">{tmdb_id}</span>,
+                <span class="mono">{quality}</span>, <span class="mono">{initial}</span>,
+                <span class="mono">{series}</span>, <span class="mono">{episode_title}</span>, <span class="mono">{series_status}</span>,
+                <span class="mono">{season:00}</span>, <span class="mono">{episode:00}</span>,
+                <span class="mono">{movies_root}</span>, <span class="mono">{series_root}</span>
+              </div>
+              <div class="muted" style="margin-top:6px">Tip: <span class="mono">:00</span> hace padding (01,02…).</div>
             </div>
 
             <div class="list" style="padding:12px">
