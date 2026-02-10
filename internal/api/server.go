@@ -216,6 +216,7 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerJobLogRoutes()
 	s.registerProviderRoutes()
 	s.registerCatalogRoutes()
+	s.registerImportDeleteRoutes()
 	s.registerCatalogFileRoutes()
 	s.registerRawRoutes()
 	s.registerManualLibraryRoutes()

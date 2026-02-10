@@ -595,14 +595,27 @@ async function refreshImports() {
     const btnDel = el('button', { class: 'btn danger', text: 'Borrar global' });
     btnDel.onclick = async (ev) => {
       ev.stopPropagation();
-      const ok = confirm('¿Eliminar este import de la biblioteca (global)?\n\n- Desaparece de library-auto y library-manual\n- NO borra el NZB del disco\n\n¿Continuar?');
+      const ok = confirm('¿Eliminar este import de la biblioteca (global)?\n\n- Desaparece de library-auto y library-manual\n- NO borra el NZB ni PAR2 del disco\n\n¿Continuar?');
       if (!ok) return;
       await apiPostJson('/api/v1/catalog/imports/delete', { id: it.id });
       await refreshImports();
-      // refresh auto view
       await refreshList('auto');
     };
+
+    const btnFull = el('button', { class: 'btn danger', text: 'Borrado completo' });
+    btnFull.onclick = async (ev) => {
+      ev.stopPropagation();
+      const ok = confirm('⚠ Borrado completo (irreversible)\n\n- Borra de la BD\n- Mueve NZB a /host/inbox/.trash\n- Mueve PAR2 a /host/inbox/.trash\n\n¿Continuar?');
+      if (!ok) return;
+      const typed = prompt('Escribe BORRAR para confirmar');
+      if ((typed || '').trim().toUpperCase() !== 'BORRAR') return;
+      await apiPostJson('/api/v1/catalog/imports/delete_full', { id: it.id });
+      await refreshImports();
+      await refreshList('auto');
+    };
+
     cell.appendChild(btnDel);
+    cell.appendChild(btnFull);
     row.appendChild(cell);
 
     list.appendChild(row);
