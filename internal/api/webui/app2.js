@@ -559,6 +559,7 @@ let reviewSelected = null;
 
 function showReviewBox(show) {
   const box = document.getElementById('reviewBox');
+  if (!box) return;
   box.style.display = show ? '' : 'none';
 }
 
@@ -575,8 +576,13 @@ async function refreshReview() {
     const list = document.getElementById('reviewList');
     list.innerHTML = '';
 
-    showReviewBox(items.length > 0);
-    if (items.length === 0) return;
+    // Keep the review box visible so users know where to look,
+    // even when there are no pending items.
+    showReviewBox(true);
+    if (items.length === 0) {
+      list.innerHTML = '<div class="muted" style="padding:10px">No hay elementos pendientes de revisión.</div>';
+      return;
+    }
 
     for (const it of items) {
       const row = el('div', { class: 'listRow' });
