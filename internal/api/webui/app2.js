@@ -790,12 +790,11 @@ window.addEventListener('DOMContentLoaded', () => {
         const f = up.files && up.files[0];
         if (!f) return;
         const fd = new FormData();
-        fd.append('path', impPath);
         fd.append('file', f, f.name);
-        setStatus('impStatus', 'Subiendo...');
-        const r = await fetch('/api/v1/hostfs/upload', { method: 'POST', body: fd });
+        setStatus('impStatus', 'Subiendo a NZB inbox…');
+        const r = await fetch('/api/v1/import/nzb/upload', { method: 'POST', body: fd });
         if (!r.ok) throw new Error(await r.text());
-        setStatus('impStatus', 'OK');
+        setStatus('impStatus', 'OK (copiado a inbox)');
         up.value = '';
         await refreshImport();
       };
