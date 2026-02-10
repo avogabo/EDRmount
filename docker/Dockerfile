@@ -3,7 +3,12 @@
 FROM golang:1.24 AS build
 WORKDIR /src
 COPY . .
-RUN go build -o /out/edrmount ./cmd/edrmount
+
+# Build metadata (set by CI via build args)
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+RUN go build -ldflags "-X github.com/gaby/EDRmount/internal/version.Version=${VERSION} -X github.com/gaby/EDRmount/internal/version.Commit=${COMMIT} -X github.com/gaby/EDRmount/internal/version.Date=${BUILD_DATE}" -o /out/edrmount ./cmd/edrmount
 
 # Health tool (included in image)
 # Pin version for reproducible builds (avoid cache bust / upstream breakage)
