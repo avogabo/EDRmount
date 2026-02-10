@@ -46,6 +46,30 @@ Mounts (FUSE):
 - **Ajustes**: config + restart
 - **Logs**: logs de jobs
 
+## Ajustes recomendados (rutas vigiladas + flujo)
+
+En **Ajustes (Settings)** tienes dos carpetas vigiladas:
+
+- **Watch media** (`watch.media.dir`): recomienda poner aquí **tus descargas** (donde caen los releases antes de subir/importar).
+  - Ejemplo: `/host/inbox/media`
+- **Watch NZB** (`watch.nzb.dir`): recomienda montar aquí tu **origen de NZBs** (por ejemplo OneDrive con los NZBs del grupo EDR).
+  - Ejemplo: `/host/inbox/nzb`
+
+> Idea: *media* = “lo que vas a procesar/subir”; *nzb* = “la cola/entrada de NZBs”.
+
+## Library-auto (reglas tipo Filebot)
+
+La vista `library-auto` se construye con plantillas configurables (estilo Filebot). Falta por completar la UI para editar todas las reglas, pero el backend ya soporta:
+
+- `library.movie_dir_template`, `library.movie_file_template`
+- `library.series_dir_template`, `library.season_folder_template`, `library.series_file_template`
+
+Puedes personalizarlas en `config.json` (o vía UI cuando esté completa) para adaptar tu estructura de biblioteca.
+
+## Primer arranque (first install)
+
+Si `/config/config.json` no existe, EDRmount crea un **config.json mínimo** (sin secretos) para que el contenedor pueda arrancar y luego termines la configuración desde la UI.
+
 ## Notas importantes
 
 - PAR2 se **guarda local** (no se sube al release).

@@ -362,6 +362,20 @@ async function loadUploadSettings() {
   document.getElementById('setNntpThreads').value = (n.threads != null) ? n.threads : 2;
   document.getElementById('setNntpGroups').value = n.groups || '';
 
+  // Library-auto templates
+  const L = (cfg.library || {});
+  document.getElementById('setLibEnabled').checked = (L.enabled !== false);
+  document.getElementById('setLibUpper').checked = !!L.uppercase_folders;
+  document.getElementById('setLibMoviesRoot').value = L.movies_root || '';
+  document.getElementById('setLibSeriesRoot').value = L.series_root || '';
+  document.getElementById('setLibEmision').value = L.emision_folder || '';
+  document.getElementById('setLibFinal').value = L.finalizadas_folder || '';
+  document.getElementById('setLibMovieDirT').value = L.movie_dir_template || '';
+  document.getElementById('setLibMovieFileT').value = L.movie_file_template || '';
+  document.getElementById('setLibSeriesDirT').value = L.series_dir_template || '';
+  document.getElementById('setLibSeasonT').value = L.season_folder_template || '';
+  document.getElementById('setLibSeriesFileT').value = L.series_file_template || '';
+
   // Plex (solo library-auto)
   const p = (cfg.plex || {});
   document.getElementById('setPlexEnabled').checked = !!p.enabled;
@@ -441,6 +455,20 @@ async function saveUploadSettings() {
     cfg.ngpost.connections = _int('setNntpConnections', 20);
     cfg.ngpost.threads = _int('setNntpThreads', 2);
     cfg.ngpost.groups = _val('setNntpGroups');
+
+    // Library-auto templates
+    cfg.library = cfg.library || {};
+    cfg.library.enabled = _bool('setLibEnabled');
+    cfg.library.uppercase_folders = _bool('setLibUpper');
+    cfg.library.movies_root = _val('setLibMoviesRoot');
+    cfg.library.series_root = _val('setLibSeriesRoot');
+    cfg.library.emision_folder = _val('setLibEmision');
+    cfg.library.finalizadas_folder = _val('setLibFinal');
+    cfg.library.movie_dir_template = _val('setLibMovieDirT');
+    cfg.library.movie_file_template = _val('setLibMovieFileT');
+    cfg.library.series_dir_template = _val('setLibSeriesDirT');
+    cfg.library.season_folder_template = _val('setLibSeasonT');
+    cfg.library.series_file_template = _val('setLibSeriesFileT');
 
     // Plex (solo library-auto)
     cfg.plex = cfg.plex || {};

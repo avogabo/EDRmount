@@ -10,9 +10,70 @@
     "cache_dir": "/cache",
     "cache_max_bytes": 53687091200
   },
+
+  "watch": {
+    "media": {
+      "enabled": false,
+      "dir": "/host/inbox/media",
+      "recursive": true
+    },
+    "nzb": {
+      "enabled": true,
+      "dir": "/host/inbox/nzb",
+      "recursive": true
+    }
+  },
+
   "runner": {
+    "enabled": true,
     "mode": "stub"
   },
+
+  "library": {
+    "enabled": true,
+
+    "movies_root": "PELICULAS",
+    "series_root": "SERIES",
+
+    "emision_folder": "EMISION",
+    "finalizadas_folder": "FINALIZADAS",
+
+    "uppercase_folders": true,
+
+    "movie_dir_template": "{movies_root}/{quality}/{initial}/{title} ({year}) tmdb-{tmdb_id}",
+    "movie_file_template": "{title} ({year}) tmdb-{tmdb_id}{ext}",
+
+    "series_dir_template": "{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}",
+    "season_folder_template": "TEMPORADA {season:00}",
+    "series_file_template": "{season:00}x{episode:00} - {episode_title}{ext}"
+  },
+
+  "metadata": {
+    "tmdb": {
+      "enabled": false,
+      "api_key": "",
+      "language": "es-ES"
+    }
+  },
+
+  "plex": {
+    "enabled": false,
+    "refresh_on_import": true,
+    "base_url": "http://192.168.1.10:32400",
+    "token": "",
+    "plex_root": "/mnt/media/library-auto"
+  },
+
+  "upload": {
+    "provider": "ngpost",
+    "par": {
+      "enabled": true,
+      "redundancy_percent": 20,
+      "keep_parity_files": true,
+      "dir": "/host/inbox/par2"
+    }
+  },
+
   "ngpost": {
     "enabled": false,
     "host": "ssl-news.provider.com",
@@ -27,6 +88,7 @@
     "tmp_dir": "",
     "obfuscate": true
   },
+
   "download": {
     "enabled": false,
     "host": "news.newshosting.com",
@@ -36,5 +98,28 @@
     "pass": "",
     "connections": 20,
     "prefetch_segments": 2
+  },
+
+  "backups": {
+    "enabled": false,
+    "dir": "/backups",
+    "every_mins": 0,
+    "keep": 30,
+    "compress_gz": true
+  },
+
+  "health": {
+    "enabled": true,
+    "backup_dir": "/cache/health-bak",
+    "scan": {
+      "enabled": false,
+      "interval_hours": 24,
+      "chunk_every_hours": 24,
+      "max_duration_minutes": 180,
+      "auto_repair": true
+    },
+    "lock": {
+      "lock_ttl_hours": 6
+    }
   }
 }

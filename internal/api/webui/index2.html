@@ -472,6 +472,9 @@
             <div class="list" style="padding:12px">
               <b>Subida (Upload)</b>
               <div class="muted" style="margin-top:6px">Vigilancia automática + proveedor + conexión Usenet (NNTP).</div>
+              <div class="muted" style="margin-top:6px">
+                Recomendación: en <b>media</b> pon tu carpeta de <b>descargas</b>. En <b>NZB</b> monta el OneDrive (o fuente) con los NZBs del grupo EDR.
+              </div>
 
               <div class="row" style="margin-top:12px">
                 <label class="muted"><input type="checkbox" id="setWatchMediaEnabled" /> Vigilancia automática (Watch folder) para media</label>
@@ -538,6 +541,63 @@
               <div class="muted" style="margin-top:12px">
                 Nota: Guardar aplica cambios en config y reinicia el contenedor (Save writes config + restart).
               </div>
+            </div>
+
+            <div class="list" style="padding:12px">
+              <b>Library-auto (plantillas tipo Filebot)</b>
+              <div class="muted" style="margin-top:6px">Configura cómo se construyen las rutas virtuales en <b>library-auto</b>.</div>
+
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setLibEnabled" /> Activar library-auto (Enable)</label>
+                <label class="muted" style="margin-left:14px"><input type="checkbox" id="setLibUpper" /> Carpetas en MAYÚSCULAS</label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Movies root
+                  <input id="setLibMoviesRoot" style="min-width:220px; margin-left:8px" placeholder="PELICULAS" />
+                </label>
+                <label class="muted">Series root
+                  <input id="setLibSeriesRoot" style="min-width:220px; margin-left:8px" placeholder="SERIES" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Emisión folder
+                  <input id="setLibEmision" style="min-width:220px; margin-left:8px" placeholder="EMISION" />
+                </label>
+                <label class="muted">Finalizadas folder
+                  <input id="setLibFinal" style="min-width:220px; margin-left:8px" placeholder="FINALIZADAS" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Movie dir template
+                  <input id="setLibMovieDirT" style="min-width:520px; margin-left:8px" placeholder="{movies_root}/{quality}/{initial}/{title} ({year}) tmdb-{tmdb_id}" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Movie file template
+                  <input id="setLibMovieFileT" style="min-width:520px; margin-left:8px" placeholder="{title} ({year}) tmdb-{tmdb_id}{ext}" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Series dir template
+                  <input id="setLibSeriesDirT" style="min-width:520px; margin-left:8px" placeholder="{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Season folder template
+                  <input id="setLibSeasonT" style="min-width:520px; margin-left:8px" placeholder="TEMPORADA {season:00}" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Series file template
+                  <input id="setLibSeriesFileT" style="min-width:520px; margin-left:8px" placeholder="{season:00}x{episode:00} - {episode_title}{ext}" />
+                </label>
+              </div>
+
+              <div class="muted" style="margin-top:10px">Tip: esto controla lo que ve Plex (apunta Plex a <span class="mono">library-auto</span>).</div>
             </div>
 
             <div class="list" style="padding:12px">
