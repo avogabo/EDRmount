@@ -198,8 +198,11 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			// We still generate parity into /cache (parStagingDir), so we avoid copying the large media file.
 			parBase := filepath.Join(parStagingDir, base)
 			inputPath := p.Path
-			// Use par2cmdline-compatible interface: `par2 c -r<percent> <parBase>.par2 <file>`
-			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), parBase + ".par2", "--", inputPath}
+			inputDir := filepath.Dir(inputPath)
+			// Use par2cmdline-compatible interface.
+			// par2 enforces a basepath; set it to the directory containing the source file so absolute
+			// /host/... paths are not ignored when outputting parity under /cache.
+			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), "-B" + inputDir, parBase + ".par2", "--", inputPath}
 			_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
 			// If par2create does not emit percentages, keep UI alive by ticking progress
 			// (avoid looking stuck at 5% for large files).
