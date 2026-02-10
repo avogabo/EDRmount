@@ -148,37 +148,43 @@ async function refreshList(kind) {
     row.appendChild(el('div', { class: 'mono muted', text: e.is_dir ? '' : fmtSize(e.size) }));
     row.appendChild(el('div', { class: 'mono muted', text: fmtTime(e.mod_time) }));
 
+    // Action cell (auto list)
+    if (isAuto) {
+      const cell = el('div');
+      if (!e.is_dir && e.import_id) {
+        const actions = el('button', { class: 'btn', type: 'button', text: '⋮' });
+        actions.style.padding = '6px 10px';
+        actions.onclick = async (ev) => {
+          ev.stopPropagation();
+          const choice = prompt('Acción:\n1 = Borrar global (BD)\n2 = Borrado completo (BD+NZB+PAR2)\n\nEscribe 1 o 2');
+          if (!choice) return;
+          if (String(choice).trim() === '1') {
+            const ok = confirm('¿Borrar global?\n\nDesaparece de auto+manual. No borra NZB/PAR2.');
+            if (!ok) return;
+            await apiPostJson('/api/v1/catalog/imports/delete', { id: e.import_id });
+            await refreshList('auto');
+            return;
+          }
+          if (String(choice).trim() === '2') {
+            const ok = confirm('⚠ Borrado completo\n\nBD + mover NZB+PAR2 a .trash\n\n¿Continuar?');
+            if (!ok) return;
+            const typed = prompt('Escribe BORRAR para confirmar');
+            if ((typed || '').trim().toUpperCase() !== 'BORRAR') return;
+            await apiPostJson('/api/v1/catalog/imports/delete_full', { id: e.import_id });
+            await refreshList('auto');
+            return;
+          }
+        };
+        cell.appendChild(actions);
+      }
+      row.appendChild(cell);
+    }
+
     if (e.is_dir) {
       row.onclick = () => {
         if (isAuto) autoPath = e.path; else manPath = e.path;
         refreshList(kind).catch(err => setStatus(statusId, String(err)));
       };
-    } else if (isAuto && e.import_id) {
-      // Mobile-friendly actions: add a small button instead of relying on right-click.
-      const actions = el('button', { class: 'btn', type: 'button', text: '⋮' });
-      actions.style.padding = '6px 10px';
-      actions.onclick = async (ev) => {
-        ev.stopPropagation();
-        const choice = prompt('Acción:\n1 = Borrar global (BD)\n2 = Borrado completo (BD+NZB+PAR2)\n\nEscribe 1 o 2');
-        if (!choice) return;
-        if (String(choice).trim() === '1') {
-          const ok = confirm('¿Borrar global?\n\nDesaparece de auto+manual. No borra NZB/PAR2.');
-          if (!ok) return;
-          await apiPostJson('/api/v1/catalog/imports/delete', { id: e.import_id });
-          await refreshList('auto');
-          return;
-        }
-        if (String(choice).trim() === '2') {
-          const ok = confirm('⚠ Borrado completo\n\nBD + mover NZB+PAR2 a .trash\n\n¿Continuar?');
-          if (!ok) return;
-          const typed = prompt('Escribe BORRAR para confirmar');
-          if ((typed || '').trim().toUpperCase() !== 'BORRAR') return;
-          await apiPostJson('/api/v1/catalog/imports/delete_full', { id: e.import_id });
-          await refreshList('auto');
-          return;
-        }
-      };
-      row.appendChild(actions);
     }
 
     list.appendChild(row);
