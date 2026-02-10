@@ -534,6 +534,20 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 
 	l := cfg.Library.Defaults()
 	initial := library.InitialFolder(g.Title)
+	if strings.TrimSpace(initial) == "" {
+		initial = "#"
+	}
+
+	// Treat non-letter initials as "#" (folder grouping)
+	if len([]rune(initial)) != 1 || (initial[0] < 'A' || initial[0] > 'Z') {
+		initial = "#"
+	}
+
+	// If inputPath is a directory (season pack), use its basename as NZB filename.
+	isDir := false
+	if st, err := os.Stat(inputPath); err == nil {
+		isDir = st.IsDir()
+	}
 
 	if g.IsSeries {
 		seriesName := safe(g.Title)
@@ -542,25 +556,19 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 			yearPart = fmt.Sprintf(" (%d)", g.Year)
 		}
 		seriesFolder := safe(seriesName + yearPart)
-		seasonFolder := ""
-		if g.Season > 0 {
-			// use configured template if present
-			seasonFolder = strings.ReplaceAll(l.SeasonFolderTemplate, "{season:00}", fmt.Sprintf("%02d", g.Season))
-			seasonFolder = strings.ReplaceAll(seasonFolder, "{season}", fmt.Sprintf("%d", g.Season))
-			seasonFolder = safe(seasonFolder)
+
+		fileName := ""
+		if isDir {
+			// e.g. "Perdidos (2004) Temporada 1.nzb"
+			fileName = safe(filepath.Base(inputPath)) + ".nzb"
+		} else if g.Season > 0 && g.Episode > 0 {
+			fileName = fmt.Sprintf("%s %02dx%02d.nzb", safe(seriesName), g.Season, g.Episode)
+		} else {
+			fileName = safe(seriesName) + ".nzb"
 		}
 
-		fileName := safe(seriesName)
-		if g.Season > 0 && g.Episode > 0 {
-			fileName = fmt.Sprintf("%s - %02dx%02d", safe(seriesName), g.Season, g.Episode)
-		}
-		fileName = fileName + ".nzb"
-
-		rel := filepath.Join(l.SeriesRoot, initial, seriesFolder)
-		if seasonFolder != "" {
-			rel = filepath.Join(rel, seasonFolder)
-		}
-		rel = filepath.Join(rel, fileName)
+		// NZB layout for series: SERIES/#/A/.../Perdidos (2004)/<file>.nzb
+		rel := filepath.Join(l.SeriesRoot, "#", initial, seriesFolder, fileName)
 		if cfg.Library.UppercaseFolders {
 			rel = library.ApplyUppercaseFolders(rel)
 		}
