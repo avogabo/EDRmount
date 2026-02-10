@@ -4,3 +4,6 @@ docker/bin/.cache/
 /config
 *.db
 *.log
+
+# Local-only planning docs
+/docs/*.local.md
