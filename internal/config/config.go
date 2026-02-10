@@ -142,6 +142,9 @@ func Load(path string) (Config, error) {
 	}
 	// Fill defaults for nested configs that may be missing
 	cfg.Library = cfg.Library.withDefaults()
+	// UX: library-auto is a core feature and should be enabled by default.
+	// We currently treat it as always-on to match expected workflow.
+	cfg.Library.Enabled = true
 	cfg.Metadata = cfg.Metadata.withDefaults()
 	cfg.Plex = cfg.Plex.withDefaults()
 	if cfg.Runner.Mode == "" {

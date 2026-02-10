@@ -364,7 +364,12 @@ async function loadUploadSettings() {
 
   // Library-auto templates (display + preview)
   const L = (cfg.library || {});
-  document.getElementById('setLibEnabled').checked = (L.enabled !== false);
+  // library-auto is treated as always enabled.
+  const libEn = document.getElementById('setLibEnabled');
+  if (libEn) {
+    libEn.checked = true;
+    libEn.disabled = true;
+  }
   document.getElementById('setLibUpper').checked = !!L.uppercase_folders;
 
   const setText = (id, t) => {
@@ -495,7 +500,8 @@ async function saveUploadSettings() {
 
     // Library-auto
     cfg.library = cfg.library || {};
-    cfg.library.enabled = _bool('setLibEnabled');
+    // library-auto always enabled (ignore UI checkbox)
+    cfg.library.enabled = true;
     cfg.library.uppercase_folders = _bool('setLibUpper');
     cfg.library.movie_dir_template = _val('setLibMovieDirT');
     cfg.library.movie_file_template = _val('setLibMovieFileT');
