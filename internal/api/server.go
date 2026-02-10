@@ -220,6 +220,7 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerRawRoutes()
 	s.registerManualLibraryRoutes()
 	s.registerManualImportRoutes()
+	s.registerManualMediaUploadRoutes()
 	s.registerHostFSRoutes()
 	s.registerLibraryReviewRoutes()
 	s.registerLibraryTemplatesRoutes()

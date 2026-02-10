@@ -815,17 +815,12 @@ window.addEventListener('DOMContentLoaded', () => {
         const f = upMedia.files && upMedia.files[0];
         if (!f) return;
         const fd = new FormData();
-        fd.append('path', '/inbox/media');
         fd.append('file', f, f.name);
-        set('Subiendo al host… (Uploading)');
-        const r = await fetch('/api/v1/hostfs/upload', { method: 'POST', body: fd });
+        set('Subiendo media manual… (Uploading manual)');
+        const r = await fetch('/api/v1/upload/media/manual', { method: 'POST', body: fd });
         if (!r.ok) throw new Error(await r.text());
-        const j = await r.json();
-        set('Encolando subida… (Queueing)');
-        // enqueue upload job (server expects container path under /host)
-        await apiPostJson('/api/v1/jobs/enqueue/upload', { path: ('/host' + (j.path || '')) });
-        upMedia.value = '';
         set('OK: encolado. (Queued)');
+        upMedia.value = '';
         // Upload page will pick it up via polling.
       } catch (e) {
         set('Error: ' + String(e));
