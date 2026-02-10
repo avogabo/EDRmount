@@ -21,7 +21,7 @@ import (
 )
 
 type healthRepairPayload struct {
-  Path string `json:"path"`
+	Path string `json:"path"`
 }
 
 func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.Config, payload healthRepairPayload) error {
@@ -246,7 +246,7 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 
 	// par2 repair in-place
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", "/usr/bin/par2", filepath.Base(parMain), filepath.Base(outFile)))
-	cmd := exec.CommandContext(ctx, "/usr/bin/par2", "r", parMain, outFile)
+	cmd := exec.CommandContext(ctx, "par2", "r", parMain, outFile)
 	cmd.Dir = workDir
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -316,29 +316,29 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 }
 
 func copyFilePerm(src, dst string, perm os.FileMode) error {
-  in, err := os.Open(src)
-  if err != nil {
-    return err
-  }
-  defer in.Close()
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
 
-  if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-    return err
-  }
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
 
-  out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
-  if err != nil {
-    return err
-  }
-  defer func() { _ = out.Close() }()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }()
 
-  if _, err := io.Copy(out, in); err != nil {
-    return err
-  }
-  if err := out.Sync(); err != nil {
-    return err
-  }
-  return out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 // healthUploadCleanNZB uploads a single media file and writes an NZB that contains ONLY the media.
