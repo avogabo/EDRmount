@@ -371,11 +371,22 @@ async function loadUploadSettings() {
     const el = document.getElementById(id);
     if (el) el.textContent = String(t || '');
   };
+  const setVal = (id, t) => {
+    const el = document.getElementById(id);
+    if (el) el.value = String(t || '').trim();
+  };
+
   setText('tplMovieDir', L.movie_dir_template || '');
   setText('tplMovieFile', L.movie_file_template || '');
   setText('tplSeriesDir', L.series_dir_template || '');
   setText('tplSeasonDir', L.season_folder_template || '');
   setText('tplSeriesFile', L.series_file_template || '');
+
+  setVal('setLibMovieDirT', L.movie_dir_template || '');
+  setVal('setLibMovieFileT', L.movie_file_template || '');
+  setVal('setLibSeriesDirT', L.series_dir_template || '');
+  setVal('setLibSeasonT', L.season_folder_template || '');
+  setVal('setLibSeriesFileT', L.series_file_template || '');
 
   // Copy buttons
   const bindCopy = (btnId, srcId) => {
@@ -482,10 +493,15 @@ async function saveUploadSettings() {
     cfg.ngpost.threads = _int('setNntpThreads', 2);
     cfg.ngpost.groups = _val('setNntpGroups');
 
-    // Library-auto (basic toggles; templates are advanced via full config page for now)
+    // Library-auto
     cfg.library = cfg.library || {};
     cfg.library.enabled = _bool('setLibEnabled');
     cfg.library.uppercase_folders = _bool('setLibUpper');
+    cfg.library.movie_dir_template = _val('setLibMovieDirT');
+    cfg.library.movie_file_template = _val('setLibMovieFileT');
+    cfg.library.series_dir_template = _val('setLibSeriesDirT');
+    cfg.library.season_folder_template = _val('setLibSeasonT');
+    cfg.library.series_file_template = _val('setLibSeriesFileT');
 
     // Plex (solo library-auto)
     cfg.plex = cfg.plex || {};

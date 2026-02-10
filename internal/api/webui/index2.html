@@ -553,7 +553,7 @@
               </div>
 
               <div class="row" style="margin-top:12px">
-                <div class="muted"><b>Templates actuales</b> (puedes copiarlos y modificarlos si eres pro):</div>
+                <div class="muted"><b>Templates actuales</b> (edita aquí y guarda):</div>
               </div>
 
               <div class="row" style="margin-top:10px">
@@ -565,9 +565,18 @@
                 <button class="btn" id="btnCopyMovieDir">Copiar</button>
               </div>
               <div class="row" style="margin-top:6px">
+                <label class="muted" style="min-width:140px">Editar</label>
+                <input id="setLibMovieDirT" style="min-width:740px" placeholder="{movies_root}/{quality}/{initial}/{title} ({year}) tmdb-{tmdb_id}" />
+              </div>
+
+              <div class="row" style="margin-top:10px">
                 <div class="muted" style="min-width:140px">Archivo</div>
                 <code id="tplMovieFile" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
                 <button class="btn" id="btnCopyMovieFile">Copiar</button>
+              </div>
+              <div class="row" style="margin-top:6px">
+                <label class="muted" style="min-width:140px">Editar</label>
+                <input id="setLibMovieFileT" style="min-width:740px" placeholder="{title} ({year}) tmdb-{tmdb_id}{ext}" />
               </div>
 
               <div class="row" style="margin-top:12px">
@@ -579,14 +588,28 @@
                 <button class="btn" id="btnCopySeriesDir">Copiar</button>
               </div>
               <div class="row" style="margin-top:6px">
+                <label class="muted" style="min-width:140px">Editar</label>
+                <input id="setLibSeriesDirT" style="min-width:740px" placeholder="{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}" />
+              </div>
+
+              <div class="row" style="margin-top:10px">
                 <div class="muted" style="min-width:140px">Carpeta temporada</div>
                 <code id="tplSeasonDir" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
                 <button class="btn" id="btnCopySeasonDir">Copiar</button>
               </div>
               <div class="row" style="margin-top:6px">
+                <label class="muted" style="min-width:140px">Editar</label>
+                <input id="setLibSeasonT" style="min-width:740px" placeholder="TEMPORADA {season:00}" />
+              </div>
+
+              <div class="row" style="margin-top:10px">
                 <div class="muted" style="min-width:140px">Archivo episodio</div>
                 <code id="tplSeriesFile" class="mono" style="white-space:nowrap; overflow:auto; display:inline-block; max-width:740px"></code>
                 <button class="btn" id="btnCopySeriesFile">Copiar</button>
+              </div>
+              <div class="row" style="margin-top:6px">
+                <label class="muted" style="min-width:140px">Editar</label>
+                <input id="setLibSeriesFileT" style="min-width:740px" placeholder="{season:00}x{episode:00} - {episode_title}{ext}" />
               </div>
 
               <div class="row" style="margin-top:14px">
