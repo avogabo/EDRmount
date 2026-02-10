@@ -243,11 +243,37 @@ function showPage(name) {
 }
 
 // Library explorer (FUSE)
-const AUTO_ROOT = '/mount/library-auto';
-const MAN_ROOT = '/mount/library-manual'; // legacy label; UI now uses DB-backed manual tree
+// NOTE: the actual mount root inside the container is typically /host/mount/*.
+// We discover it from the backend to avoid hardcoding /mount/* which breaks on Unraid.
+let AUTO_ROOT = '/mount/library-auto';
+let MAN_ROOT = '/mount/library-manual'; // legacy label; UI now uses DB-backed manual tree
 let autoPath = AUTO_ROOT;
 let manPath = MAN_ROOT;
 let manualDirId = 'root';
+
+async function initLibraryRoots() {
+  // Prefer server-provided roots (matches cfg.paths.mount_point).
+  try {
+    const r = await apiGet('/api/v1/library/auto/root');
+    if (r && r.root) {
+      AUTO_ROOT = r.root;
+      // Manual root is the sibling mount under the same mount_point.
+      MAN_ROOT = String(r.root).replace(/library-auto\s*$/, 'library-manual');
+    }
+  } catch (e) {
+    // Fallback that works for default container config.
+    AUTO_ROOT = '/host/mount/library-auto';
+    MAN_ROOT = '/host/mount/library-manual';
+  }
+
+  // If we were still on the old hardcoded root, reset to discovered root.
+  if (!autoPath || autoPath === '/mount/library-auto' || autoPath.startsWith('/mount/library-auto/')) {
+    autoPath = AUTO_ROOT;
+  }
+  if (!manPath || manPath === '/mount/library-manual' || manPath.startsWith('/mount/library-manual/')) {
+    manPath = MAN_ROOT;
+  }
+}
 
 function renderCrumbs(boxId, path, onPick) {
   const box = document.getElementById(boxId);
@@ -983,11 +1009,14 @@ async function enqueueSelectedImport() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  // Nav
-  for (const item of document.querySelectorAll('.navItem')) {
-    item.onclick = () => showPage(item.dataset.page);
-  }
-  showPage('library');
+  (async () => {
+    await initLibraryRoots();
+
+    // Nav
+    for (const item of document.querySelectorAll('.navItem')) {
+      item.onclick = () => showPage(item.dataset.page);
+    }
+    showPage('library');
 
   // Tabs
   document.getElementById('tabAuto').onclick = () => setLibraryTab('auto');
@@ -1097,4 +1126,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Load imports + review initially
   refreshImports().catch(() => {});
   refreshReview().catch(() => {});
+  })().catch(err => {
+    console.error(err);
+    alert(String(err));
+  });
 });
