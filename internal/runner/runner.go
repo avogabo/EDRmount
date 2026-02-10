@@ -207,9 +207,10 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				parEnabled = false
 			} else {
 				parBase := filepath.Join(parStagingDir, base)
-				// par2create -r<percent> <parBase>.par2 <file>
-				args := []string{fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), parBase + ".par2", linkPath}
-				_ = r.jobs.AppendLog(ctx, j.ID, "par2create: par2create "+strings.Join(args, " "))
+				// Use par2cmdline-compatible interface: `par2 c -r<percent> <parBase>.par2 <file>`
+				// (more portable across distros/forks than relying on a `par2create` wrapper).
+				args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), parBase + ".par2", linkPath}
+				_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
 				// If par2create does not emit percentages, keep UI alive by ticking progress
 				// (avoid looking stuck at 5% for large files).
 				parStart := time.Now()
@@ -248,7 +249,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 							emitProgress(p2)
 						}
 					}
-				}, "par2create", args...)
+				}, "par2", args...)
 				if err != nil {
 					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2create failed (continuing without PAR): "+err.Error())
 					parEnabled = false
