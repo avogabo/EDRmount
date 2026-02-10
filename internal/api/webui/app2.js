@@ -40,6 +40,155 @@ function fmtTime(ts) {
   return String(ts).replace('T',' ').replace('Z','');
 }
 
+// --- Manual UI (DB-backed) ---
+// NOTE: appended here for now; can be refactored into separate file later.
+async function refreshManual() {
+  const statusId = 'manStatus';
+  const listId = 'manList';
+  const crumbsId = 'manCrumbs';
+
+  setStatus(statusId, 'Cargando...');
+
+  // crumbs
+  try {
+    const path = await apiGet(`/api/v1/manual/path?dir_id=${encodeURIComponent(manualDirId)}`);
+    const box = document.getElementById(crumbsId);
+    if (box) {
+      box.innerHTML = '';
+      for (let i = 0; i < path.length; i++) {
+        const d = path[i];
+        const b = el('button', { class: 'crumb', type: 'button', text: d.name });
+        b.onclick = () => { manualDirId = d.id; refreshManual().catch(err => setStatus(statusId, String(err))); };
+        box.appendChild(b);
+        if (i !== path.length - 1) box.appendChild(el('span', { class: 'crumbSep', text: '›' }));
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  const dirs = await apiGet(`/api/v1/manual/dirs?parent_id=${encodeURIComponent(manualDirId)}`);
+  const items = await apiGet(`/api/v1/manual/items?dir_id=${encodeURIComponent(manualDirId)}`);
+
+  const list = document.getElementById(listId);
+  list.innerHTML = '';
+
+  // folders
+  for (const d of (dirs || [])) {
+    const row = el('div', { class: 'listRow' });
+    row.appendChild(el('div', { class: 'name' }, [
+      el('div', { class: 'icon', text: 'DIR' }),
+      el('div', { text: d.name })
+    ]));
+    row.appendChild(el('div', { class: 'mono muted', text: '' }));
+    row.appendChild(el('div', { class: 'mono muted', text: '' }));
+
+    const cell = el('div');
+    const btn = el('button', { class: 'btn', type: 'button', text: '⋮' });
+    btn.style.padding = '6px 10px';
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      const choice = prompt('Acción carpeta:\n1 = Renombrar\n2 = Mover (cambia parent_id)\n3 = Borrar (si vacía)\n\nEscribe 1,2,3');
+      if (!choice) return;
+      if (String(choice).trim() === '1') {
+        const name = prompt('Nuevo nombre', d.name);
+        if (!name) return;
+        await apiPutJson(`/api/v1/manual/dirs/${encodeURIComponent(d.id)}`, { name });
+        await refreshManual();
+      } else if (String(choice).trim() === '2') {
+        const parent_id = prompt('Nuevo parent_id (dir id). root=raíz', d.parent_id || 'root');
+        if (!parent_id) return;
+        await apiPutJson(`/api/v1/manual/dirs/${encodeURIComponent(d.id)}`, { parent_id });
+        await refreshManual();
+      } else if (String(choice).trim() === '3') {
+        const ok = confirm('¿Borrar carpeta? Solo si está vacía.');
+        if (!ok) return;
+        const rr = await fetch(`/api/v1/manual/dirs/${encodeURIComponent(d.id)}`, { method: 'DELETE' });
+        if (!rr.ok) throw new Error(await rr.text());
+        await refreshManual();
+      }
+    };
+    cell.appendChild(btn);
+    row.appendChild(cell);
+
+    row.onclick = () => { manualDirId = d.id; refreshManual().catch(err => setStatus(statusId, String(err))); };
+    list.appendChild(row);
+  }
+
+  // items
+  for (const it of (items || [])) {
+    const row = el('div', { class: 'listRow' });
+    row.appendChild(el('div', { class: 'name' }, [
+      el('div', { class: 'icon', text: 'FILE' }),
+      el('div', { class: 'mono', text: it.label || it.filename || '(item)' })
+    ]));
+    row.appendChild(el('div', { class: 'mono muted', text: fmtSize(it.bytes || 0) }));
+    row.appendChild(el('div', { class: 'mono muted', text: '' }));
+
+    const cell = el('div');
+    const btn = el('button', { class: 'btn', type: 'button', text: '⋮' });
+    btn.style.padding = '6px 10px';
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      const choice = prompt('Acción:\n1 = Renombrar (label)\n2 = Mover (dir_id)\n3 = Quitar de este montaje\n4 = Borrar global (BD)\n5 = Borrado completo (.trash)\n\nEscribe 1..5');
+      if (!choice) return;
+      const c = String(choice).trim();
+      if (c === '1') {
+        const label = prompt('Nuevo nombre', it.label || it.filename || '');
+        if (!label) return;
+        await apiPutJson(`/api/v1/manual/items/${encodeURIComponent(it.id)}`, { label });
+        await refreshManual();
+      } else if (c === '2') {
+        const dir_id = prompt('Nuevo dir_id (carpeta). root=raíz', it.dir_id || 'root');
+        if (!dir_id) return;
+        await apiPutJson(`/api/v1/manual/items/${encodeURIComponent(it.id)}`, { dir_id });
+        await refreshManual();
+      } else if (c === '3') {
+        const ok = confirm('¿Quitar de este montaje (Manual)?');
+        if (!ok) return;
+        const rr = await fetch(`/api/v1/manual/items/${encodeURIComponent(it.id)}`, { method: 'DELETE' });
+        if (!rr.ok) throw new Error(await rr.text());
+        await refreshManual();
+      } else if (c === '4') {
+        const ok = confirm('¿Borrar global? Desaparece de auto+manual. No borra NZB/PAR2.');
+        if (!ok) return;
+        await apiPostJson('/api/v1/catalog/imports/delete', { id: it.import_id });
+        await refreshManual();
+        await refreshList('auto');
+      } else if (c === '5') {
+        const ok = confirm('⚠ Borrado completo\n\nBD + mover NZB+PAR2 a .trash\n\n¿Continuar?');
+        if (!ok) return;
+        const typed = prompt('Escribe BORRAR para confirmar');
+        if ((typed || '').trim().toUpperCase() !== 'BORRAR') return;
+        await apiPostJson('/api/v1/catalog/imports/delete_full', { id: it.import_id });
+        await refreshManual();
+        await refreshList('auto');
+      }
+    };
+    cell.appendChild(btn);
+    row.appendChild(cell);
+
+    list.appendChild(row);
+  }
+
+  setStatus(statusId, `OK (${(dirs||[]).length} dirs, ${(items||[]).length} items)`);
+}
+
+function goUpManual() {
+  if (manualDirId === 'root') return;
+  apiGet(`/api/v1/manual/path?dir_id=${encodeURIComponent(manualDirId)}`).then(path => {
+    if (!path || path.length < 2) {
+      manualDirId = 'root';
+    } else {
+      manualDirId = path[path.length-2].id || 'root';
+    }
+    refreshManual().catch(err => setStatus('manStatus', String(err)));
+  }).catch(() => {
+    manualDirId = 'root';
+    refreshManual().catch(err => setStatus('manStatus', String(err)));
+  });
+}
+
 function fmtSize(n) {
   if (n == null || n === '') return '';
   const x = Number(n);
@@ -95,9 +244,10 @@ function showPage(name) {
 
 // Library explorer (FUSE)
 const AUTO_ROOT = '/mount/library-auto';
-const MAN_ROOT = '/mount/library-manual';
+const MAN_ROOT = '/mount/library-manual'; // legacy label; UI now uses DB-backed manual tree
 let autoPath = AUTO_ROOT;
 let manPath = MAN_ROOT;
+let manualDirId = 'root';
 
 function renderCrumbs(boxId, path, onPick) {
   const box = document.getElementById(boxId);
@@ -210,14 +360,8 @@ function goUp(kind) {
     return;
   }
 
-  // manual (FUSE)
-  const root = MAN_ROOT;
-  if (manPath === root) return;
-  const p = manPath.split('/').filter(Boolean);
-  p.pop();
-  manPath = '/' + p.join('/');
-  if (!manPath.startsWith(root)) manPath = root;
-  refreshList('manual').catch(err => setStatus('manStatus', String(err)));
+  // manual (DB-backed)
+  goUpManual();
 }
 
 function setLibraryTab(which) {
@@ -228,7 +372,7 @@ function setLibraryTab(which) {
   autoPane.classList.toggle('hide', which !== 'auto');
   manualPane.classList.toggle('hide', which !== 'manual');
   if (which === 'auto') refreshList('auto').catch(err => setStatus('autoStatus', String(err)));
-  if (which === 'manual') refreshList('manual').catch(err => setStatus('manStatus', String(err)));
+  if (which === 'manual') refreshManual().catch(err => setStatus('manStatus', String(err)));
 }
 
 async function restartNow() {
@@ -866,7 +1010,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Controls
   document.getElementById('btnAutoRefresh').onclick = () => refreshList('auto').catch(err => setStatus('autoStatus', String(err)));
   document.getElementById('btnAutoUp').onclick = () => goUp('auto');
-  document.getElementById('btnManRefresh').onclick = () => refreshList('manual').catch(err => setStatus('manStatus', String(err)));
+  document.getElementById('btnManRefresh').onclick = () => refreshManual().catch(err => setStatus('manStatus', String(err)));
   document.getElementById('btnManUp').onclick = () => goUp('manual');
 
   // Import page
