@@ -8,7 +8,7 @@ RUN go build -o /out/edrmount ./cmd/edrmount
 # Health tool (included in image)
 RUN go install github.com/javi11/nzb-repair@latest
 
-FROM ubuntu:jammy
+FROM ubuntu:jammy AS runtime
 RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 && rm -rf /var/lib/apt/lists/*
 
 # ngpost's bundled Qt expects OpenSSL 1.1 (libcrypto.so.1.1/libssl.so.1.1).
@@ -20,8 +20,24 @@ RUN set -e; \
   rm -f /etc/apt/sources.list.d/focal.list; \
   rm -rf /var/lib/apt/lists/*
 
+# ---- par2cmdline-turbo (faster PAR2 create/verify/repair) ----
+FROM ubuntu:jammy AS par2build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential autoconf automake libtool pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/animetosho/par2cmdline-turbo.git /src/par2cmdline-turbo
+WORKDIR /src/par2cmdline-turbo
+RUN test -f configure || ./automake.sh
+RUN ./configure --prefix=/usr/local
+RUN make -j"$(nproc)"
+RUN make install DESTDIR=/out
+
+FROM runtime
+
 COPY --from=build /out/edrmount /usr/local/bin/edrmount
 COPY --from=build /go/bin/nzb-repair /usr/local/bin/nzb-repair
+# Install turbo par2 tools (par2create/par2/...) overriding base package when present
+COPY --from=par2build /out/usr/local/bin/ /usr/local/bin/
 
 # ---- ngpost (bundled AppImage contents) ----
 # We bundle the extracted squashfs-root to avoid system Qt deps.
