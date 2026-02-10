@@ -194,69 +194,58 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			emitProgress(5)
 			_ = os.MkdirAll(parStagingDir, 0o755)
 
-			// Create a symlink to the input so we can upload (input + par2) together as a directory.
-			// This avoids copying large files into /cache.
-			inName := filepath.Base(p.Path)
-			if inName == "" {
-				inName = "input"
-			}
-			linkPath := filepath.Join(parStagingDir, inName)
-			_ = os.Remove(linkPath)
-			if err := os.Symlink(p.Path, linkPath); err != nil {
-				_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par: symlink failed (will continue without PAR): "+err.Error())
+			// NOTE: par2cmdline ignores symlinks as input files, so we must pass the real file path.
+			// We still generate parity into /cache (parStagingDir), so we avoid copying the large media file.
+			parBase := filepath.Join(parStagingDir, base)
+			inputPath := p.Path
+			// Use par2cmdline-compatible interface: `par2 c -r<percent> <parBase>.par2 <file>`
+			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), parBase + ".par2", "--", inputPath}
+			_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
+			// If par2create does not emit percentages, keep UI alive by ticking progress
+			// (avoid looking stuck at 5% for large files).
+			parStart := time.Now()
+			tickDone := make(chan struct{})
+			defer close(tickDone)
+			go func() {
+				t := time.NewTicker(10 * time.Second)
+				defer t.Stop()
+				p := 5
+				for {
+					select {
+					case <-tickDone:
+						return
+					case <-ctx.Done():
+						return
+					case <-t.C:
+						// creep up to 19 while PAR is running
+						if p < 19 {
+							p++
+							emitProgress(p)
+						}
+						// emit a heartbeat line so users see it is still working
+						d := time.Since(parStart).Round(time.Second)
+						_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: still generating (elapsed %s)", d))
+					}
+				}
+			}()
+
+			err := runCommand(ctx, func(line string) {
+				clean := strings.TrimSpace(line)
+				_ = r.jobs.AppendLog(ctx, j.ID, clean)
+				if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+					if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+						// Map PAR stage to early progress window (5..20)
+						p2 := 5 + (n * 15 / 100)
+						emitProgress(p2)
+					}
+				}
+			}, "par2", args...)
+			if err != nil {
+				_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2create failed (continuing without PAR): "+err.Error())
 				parEnabled = false
 			} else {
-				parBase := filepath.Join(parStagingDir, base)
-				// Use par2cmdline-compatible interface: `par2 c -r<percent> <parBase>.par2 <file>`
-				// (more portable across distros/forks than relying on a `par2create` wrapper).
-				args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), parBase + ".par2", linkPath}
-				_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
-				// If par2create does not emit percentages, keep UI alive by ticking progress
-				// (avoid looking stuck at 5% for large files).
-				parStart := time.Now()
-				tickDone := make(chan struct{})
-				defer close(tickDone)
-				go func() {
-					t := time.NewTicker(10 * time.Second)
-					defer t.Stop()
-					p := 5
-					for {
-						select {
-						case <-tickDone:
-							return
-						case <-ctx.Done():
-							return
-						case <-t.C:
-							// creep up to 19 while PAR is running
-							if p < 19 {
-								p++
-								emitProgress(p)
-							}
-							// emit a heartbeat line so users see it is still working
-							d := time.Since(parStart).Round(time.Second)
-							_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: still generating (elapsed %s)", d))
-						}
-					}
-				}()
-
-				err := runCommand(ctx, func(line string) {
-					clean := strings.TrimSpace(line)
-					_ = r.jobs.AppendLog(ctx, j.ID, clean)
-					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-							// Map PAR stage to early progress window (5..20)
-							p2 := 5 + (n * 15 / 100)
-							emitProgress(p2)
-						}
-					}
-				}, "par2", args...)
-				if err != nil {
-					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2create failed (continuing without PAR): "+err.Error())
-					parEnabled = false
-				} else {
-					emitProgress(20)
-					parDir = parStagingDir
-				}
+				emitProgress(20)
+				parDir = parStagingDir
 			}
 		}
 
