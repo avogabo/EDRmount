@@ -174,6 +174,10 @@ func (d *DB) migrate() error {
 	// Best-effort backfill filename for older imports
 	_ = backfillFilenames(d.SQL)
 	seedManualRoot(d.SQL)
+
+	// Recovery: if the container restarted mid-job, some jobs may be stuck in "running".
+	// Mark them back to pending so the runner can pick them up again.
+	_, _ = d.SQL.Exec(`UPDATE jobs SET state='pending', updated_at=? WHERE state='running'`, nowUnix())
 	return nil
 }
 
