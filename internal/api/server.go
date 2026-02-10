@@ -224,6 +224,7 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerManualMediaUploadRoutes()
 	s.registerHostFSRoutes()
 	s.registerLibraryReviewRoutes()
+	s.registerLibraryAutoListRoutes()
 	s.registerLibraryTemplatesRoutes()
 	s.registerUploadSummaryRoutes()
 	s.registerHealthRoutes()

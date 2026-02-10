@@ -132,7 +132,9 @@ async function refreshList(kind) {
     refreshList(kind).catch(err => setStatus(statusId, String(err)));
   });
 
-  const data = await apiGet(`/api/v1/hostfs/list?path=${encodeURIComponent(path)}`);
+  const data = isAuto
+    ? await apiGet(`/api/v1/library/auto/list?path=${encodeURIComponent(path)}`)
+    : await apiGet(`/api/v1/hostfs/list?path=${encodeURIComponent(path)}`);
   const list = document.getElementById(listId);
   list.innerHTML = '';
 
@@ -150,6 +152,29 @@ async function refreshList(kind) {
       row.onclick = () => {
         if (isAuto) autoPath = e.path; else manPath = e.path;
         refreshList(kind).catch(err => setStatus(statusId, String(err)));
+      };
+    } else if (isAuto && e.import_id) {
+      // Context menu for global delete actions (library-auto)
+      row.oncontextmenu = async (ev) => {
+        ev.preventDefault();
+        const choice = prompt('Acción:\n1 = Borrar global (BD)\n2 = Borrado completo (BD+NZB+PAR2)\n\nEscribe 1 o 2');
+        if (!choice) return;
+        if (String(choice).trim() === '1') {
+          const ok = confirm('¿Borrar global?\n\nDesaparece de auto+manual. No borra NZB/PAR2.');
+          if (!ok) return;
+          await apiPostJson('/api/v1/catalog/imports/delete', { id: e.import_id });
+          await refreshList('auto');
+          return;
+        }
+        if (String(choice).trim() === '2') {
+          const ok = confirm('⚠ Borrado completo\n\nBD + mover NZB+PAR2 a .trash\n\n¿Continuar?');
+          if (!ok) return;
+          const typed = prompt('Escribe BORRAR para confirmar');
+          if ((typed || '').trim().toUpperCase() !== 'BORRAR') return;
+          await apiPostJson('/api/v1/catalog/imports/delete_full', { id: e.import_id });
+          await refreshList('auto');
+          return;
+        }
       };
     }
 
