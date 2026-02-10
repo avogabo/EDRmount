@@ -26,7 +26,7 @@
 
   "runner": {
     "enabled": true,
-    "mode": "stub"
+    "mode": "exec"
   },
 
   "library": {
