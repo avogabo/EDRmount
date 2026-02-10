@@ -575,6 +575,40 @@ function qualityFromGuess(q) {
   return '1080';
 }
 
+async function refreshImports() {
+  const list = document.getElementById('importsList');
+  if (!list) return;
+  list.innerHTML = '';
+  const items = await apiGet('/api/v1/catalog/imports');
+  if (!items || items.length === 0) {
+    list.innerHTML = '<div class="muted" style="padding:10px">No hay imports.</div>';
+    return;
+  }
+  for (const it of items) {
+    const row = el('div', { class: 'listRow' });
+    const name = (it.path || '').split('/').pop() || it.id.slice(0, 8);
+    row.appendChild(el('div', { class: 'mono', text: name }));
+    row.appendChild(el('div', { class: 'mono muted', text: fmtSize(it.total_bytes || 0) }));
+    row.appendChild(el('div', { class: 'mono muted', text: fmtTime(it.imported_at) }));
+
+    const cell = el('div');
+    const btnDel = el('button', { class: 'btn danger', text: 'Borrar global' });
+    btnDel.onclick = async (ev) => {
+      ev.stopPropagation();
+      const ok = confirm('¿Eliminar este import de la biblioteca (global)?\n\n- Desaparece de library-auto y library-manual\n- NO borra el NZB del disco\n\n¿Continuar?');
+      if (!ok) return;
+      await apiPostJson('/api/v1/catalog/imports/delete', { id: it.id });
+      await refreshImports();
+      // refresh auto view
+      await refreshList('auto');
+    };
+    cell.appendChild(btnDel);
+    row.appendChild(cell);
+
+    list.appendChild(row);
+  }
+}
+
 async function refreshReview() {
   try {
     const r = await apiGet('/api/v1/library/review');
@@ -769,6 +803,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tabManual').onclick = () => setLibraryTab('manual');
   setLibraryTab('auto');
 
+  // Imports UI
+  if (document.getElementById('btnImportsRefresh')) {
+    document.getElementById('btnImportsRefresh').onclick = () => refreshImports().catch(() => {});
+  }
+
   // Review UI
   document.getElementById('btnReviewRefresh').onclick = () => refreshReview().catch(() => {});
   document.getElementById('btnFixApply').onclick = () => applyFix().catch(() => {});
@@ -864,6 +903,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnLogsRefresh').onclick = () => refreshLogsJobs().catch(() => {});
   }
 
-  // Load review box initially
+  // Load imports + review initially
+  refreshImports().catch(() => {});
   refreshReview().catch(() => {});
 });

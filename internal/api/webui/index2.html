@@ -209,6 +209,25 @@
           </div>
 
           <div id="autoPane">
+            <div id="importsBox" class="list" style="padding:12px; margin-bottom:10px">
+              <div class="row" style="justify-content:space-between">
+                <div>
+                  <b>📦 Imports recientes (Recent imports)</b>
+                  <div class="muted" style="margin-top:4px">Borrar global elimina el import de la biblioteca (auto+manual). No borra el NZB del disco.</div>
+                </div>
+                <button class="btn" id="btnImportsRefresh">Actualizar</button>
+              </div>
+              <div class="list" style="margin-top:10px">
+                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 150px;">
+                  <div>Import (NZB)</div>
+                  <div class="mono">Size</div>
+                  <div class="mono">ImportedAt</div>
+                  <div>Acción</div>
+                </div>
+                <div id="importsList"></div>
+              </div>
+            </div>
+
             <div id="reviewBox" class="list" style="padding:12px; display:none">
               <div class="row" style="justify-content:space-between">
                 <div>
