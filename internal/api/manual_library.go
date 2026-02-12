@@ -128,7 +128,7 @@ func (s *Server) registerManualLibraryRoutes() {
 			if parent == "" {
 				parent = "root"
 			}
-			rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT id,parent_id,name FROM manual_dirs WHERE parent_id=? ORDER BY name`, parent)
+			rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT id,parent_id,name FROM manual_dirs WHERE parent_id=? AND id<>'root' ORDER BY name`, parent)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

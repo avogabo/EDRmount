@@ -10,7 +10,6 @@
     "cache_dir": "/cache",
     "cache_max_bytes": 53687091200
   },
-
   "watch": {
     "media": {
       "enabled": false,
@@ -23,39 +22,30 @@
       "recursive": true
     }
   },
-
   "runner": {
     "enabled": true,
     "mode": "exec"
   },
-
   "library": {
     "enabled": true,
-
     "movies_root": "PELICULAS",
     "series_root": "SERIES",
-
     "emision_folder": "EMISION",
     "finalizadas_folder": "FINALIZADAS",
-
     "uppercase_folders": true,
-
     "movie_dir_template": "{movies_root}/{quality}/{initial}/{title} ({year}) tmdb-{tmdb_id}",
     "movie_file_template": "{title} ({year}) tmdb-{tmdb_id}{ext}",
-
     "series_dir_template": "{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}",
     "season_folder_template": "TEMPORADA {season:00}",
     "series_file_template": "{season:00}x{episode:00} - {episode_title}{ext}"
   },
-
   "metadata": {
     "tmdb": {
-      "enabled": false,
+      "enabled": true,
       "api_key": "",
       "language": "es-ES"
     }
   },
-
   "plex": {
     "enabled": false,
     "refresh_on_import": true,
@@ -63,7 +53,6 @@
     "token": "",
     "plex_root": "/mnt/media/library-auto"
   },
-
   "upload": {
     "provider": "ngpost",
     "par": {
@@ -73,7 +62,6 @@
       "dir": "/host/inbox/par2"
     }
   },
-
   "ngpost": {
     "enabled": false,
     "host": "ssl-news.provider.com",
@@ -88,7 +76,6 @@
     "tmp_dir": "",
     "obfuscate": true
   },
-
   "download": {
     "enabled": false,
     "host": "news.newshosting.com",
@@ -99,7 +86,6 @@
     "connections": 20,
     "prefetch_segments": 2
   },
-
   "backups": {
     "enabled": false,
     "dir": "/backups",
@@ -107,7 +93,6 @@
     "keep": 30,
     "compress_gz": true
   },
-
   "health": {
     "enabled": true,
     "backup_dir": "/cache/health-bak",
@@ -120,6 +105,19 @@
     },
     "lock": {
       "lock_ttl_hours": 6
+    }
+  },
+  "rename": {
+    "provider": "builtin",
+    "filebot": {
+      "enabled": false,
+      "binary": "/usr/local/bin/filebot",
+      "db": "TheMovieDB",
+      "language": "es",
+      "movie_format": "{n} ({y})",
+      "series_format": "{n} - {s00e00} - {t}",
+      "action": "test",
+      "license_path": "/config/filebot/license.psm"
     }
   }
 }

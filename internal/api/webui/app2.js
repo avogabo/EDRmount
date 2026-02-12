@@ -275,18 +275,36 @@ async function initLibraryRoots() {
   }
 }
 
-function renderCrumbs(boxId, path, onPick) {
+function renderCrumbs(boxId, path, root, onPick) {
   const box = document.getElementById(boxId);
   box.innerHTML = '';
-  const parts = path.split('/').filter(Boolean);
-  let acc = '';
-  for (let i = 0; i < parts.length; i++) {
-    acc += '/' + parts[i];
-    const target = acc; // avoid closure bug
-    const b = el('button', { class: 'crumb', type: 'button', text: parts[i] });
+
+  // Never allow navigating above root (otherwise backend returns: path outside library-auto).
+  if (root && typeof root === 'string') {
+    if (!path || !String(path).startsWith(root)) path = root;
+  }
+
+  const rootParts = (root || '').split('/').filter(Boolean);
+  const parts = String(path).split('/').filter(Boolean);
+
+  // Always render a root crumb first (label = last segment of root).
+  if (rootParts.length) {
+    const rootLabel = rootParts[rootParts.length - 1];
+    const bRoot = el('button', { class: 'crumb', type: 'button', text: rootLabel });
+    bRoot.onclick = () => onPick('/' + rootParts.join('/'));
+    box.appendChild(bRoot);
+  }
+
+  // Render only crumbs under root.
+  const rest = parts.slice(rootParts.length);
+  let acc = '/' + rootParts.join('/');
+  for (let i = 0; i < rest.length; i++) {
+    if (acc) box.appendChild(el('span', { class: 'crumbSep', text: '›' }));
+    acc += '/' + rest[i];
+    const target = acc;
+    const b = el('button', { class: 'crumb', type: 'button', text: rest[i] });
     b.onclick = () => onPick(target);
     box.appendChild(b);
-    if (i !== parts.length - 1) box.appendChild(el('span', { class: 'crumbSep', text: '›' }));
   }
 }
 
@@ -303,7 +321,9 @@ async function refreshList(kind) {
   const statusId = isAuto ? 'autoStatus' : 'manStatus';
 
   setStatus(statusId, 'Cargando...');
-  renderCrumbs(crumbsId, path, (picked) => {
+  renderCrumbs(crumbsId, path, root, (picked) => {
+    // Guard: never allow crumbs to pick above root.
+    if (!picked || !String(picked).startsWith(root)) picked = root;
     if (isAuto) autoPath = picked; else manPath = picked;
     refreshList(kind).catch(err => setStatus(statusId, String(err)));
   });
@@ -659,6 +679,17 @@ async function loadUploadSettings() {
   document.getElementById('setTMDBApiKey').value = t.api_key || '';
   document.getElementById('setTMDBLanguage').value = t.language || 'es-ES';
 
+  // Rename / FileBot
+  const rn = (cfg.rename || {});
+  const fb = (rn.filebot || {});
+  document.getElementById('setRenameProvider').value = rn.provider || 'builtin';
+  document.getElementById('setFileBotEnabled').checked = !!fb.enabled;
+  document.getElementById('setFileBotBinary').value = fb.binary || '/usr/local/bin/filebot';
+  document.getElementById('setFileBotLicensePath').value = fb.license_path || '/config/filebot/license.psm';
+  document.getElementById('setFileBotDB').value = fb.db || 'TheMovieDB';
+  document.getElementById('setFileBotLanguage').value = fb.language || 'es';
+  document.getElementById('setFileBotAction').value = fb.action || 'test';
+
   set('');
 }
 
@@ -750,6 +781,17 @@ async function saveUploadSettings() {
     cfg.metadata.tmdb.enabled = _bool('setTMDBEnabled');
     cfg.metadata.tmdb.api_key = _val('setTMDBApiKey');
     cfg.metadata.tmdb.language = _val('setTMDBLanguage') || 'es-ES';
+
+    // Rename / FileBot
+    cfg.rename = cfg.rename || {};
+    cfg.rename.provider = _val('setRenameProvider') || 'builtin';
+    cfg.rename.filebot = cfg.rename.filebot || {};
+    cfg.rename.filebot.enabled = _bool('setFileBotEnabled');
+    cfg.rename.filebot.binary = _val('setFileBotBinary') || '/usr/local/bin/filebot';
+    cfg.rename.filebot.license_path = _val('setFileBotLicensePath') || '/config/filebot/license.psm';
+    cfg.rename.filebot.db = _val('setFileBotDB') || 'TheMovieDB';
+    cfg.rename.filebot.language = _val('setFileBotLanguage') || 'es';
+    cfg.rename.filebot.action = _val('setFileBotAction') || 'test';
 
     set('Guardando… (Saving)');
     await apiPutJson('/api/v1/config', cfg);
@@ -945,7 +987,8 @@ let impSelected = '';
 async function refreshImport() {
   const statusId = 'impStatus';
   setStatus(statusId, 'Cargando...');
-  renderCrumbs('impCrumbs', impPath, (picked) => {
+  renderCrumbs('impCrumbs', impPath, IMP_ROOT, (picked) => {
+    if (!picked || !String(picked).startsWith(IMP_ROOT)) picked = IMP_ROOT;
     impPath = picked;
     refreshImport().catch(err => setStatus(statusId, String(err)));
   });

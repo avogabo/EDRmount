@@ -203,13 +203,24 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	if !g.IsSeries {
 		movieTitle := g.Title
 		tmdbID := 0
+		if fb, ok := library.ResolveWithFileBot(ctxbg(ctx), n.fs.Cfg, row.Filename); ok {
+			if strings.TrimSpace(fb.Title) != "" {
+				movieTitle = fb.Title
+			}
+			if fb.Year > 0 {
+				year = fb.Year
+				nums["year"] = fb.Year
+			}
+			if fb.TMDB > 0 {
+				tmdbID = fb.TMDB
+			}
+		}
 		// Prefer explicit override tmdb_id if present.
 		_ = n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT tmdb_id FROM library_overrides WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&tmdbID)
 		if tmdbID < 0 {
 			tmdbID = 0
 		}
-		if n.fs.resolver != nil {
-			// If tmdbID already set, we still allow resolver to enrich title/year best-effort.
+		if n.fs.resolver != nil && tmdbID == 0 {
 			if m, ok := n.fs.resolver.ResolveMovie(ctxbg(ctx), movieTitle, year); ok {
 				movieTitle = m.Title
 				y := m.ReleaseYear()
@@ -236,15 +247,31 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	seriesName := g.Title
 	seriesTMDB := 0
 	bucket := l.EmisionFolder
+	if fb, ok := library.ResolveWithFileBot(ctxbg(ctx), n.fs.Cfg, row.Filename); ok {
+		if strings.TrimSpace(fb.Title) != "" {
+			seriesName = fb.Title
+		}
+		if fb.Year > 0 {
+			year = fb.Year
+			nums["year"] = fb.Year
+		}
+		if fb.TMDB > 0 {
+			seriesTMDB = fb.TMDB
+		}
+	}
 	if n.fs.resolver != nil {
 		if tv, ok := n.fs.resolver.ResolveTV(ctxbg(ctx), seriesName, year); ok {
-			seriesName = tv.Name
+			if strings.TrimSpace(seriesName) == "" || seriesTMDB == 0 {
+				seriesName = tv.Name
+			}
 			y := tv.FirstAirYear()
 			if y > 0 {
 				year = y
 				nums["year"] = y
 			}
-			seriesTMDB = tv.ID
+			if seriesTMDB == 0 {
+				seriesTMDB = tv.ID
+			}
 			b := tmdb.MapTVStatusToBucket(tv.Status)
 			if b == tmdb.SeriesBucketFinalizada {
 				bucket = l.FinalizadasFolder

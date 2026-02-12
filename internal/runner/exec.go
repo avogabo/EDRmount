@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 )
@@ -11,6 +12,11 @@ import (
 // runCommand runs a command and streams stdout/stderr line-by-line to onLine.
 func runCommand(ctx context.Context, onLine func(string), name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(),
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+		"JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8",
+	)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

@@ -104,20 +104,25 @@ func (s *Server) registerLibraryReviewRoutes() {
 				continue
 			}
 
-			// "Fail" means TMDB resolve doesn't find a movie match.
+			// "Fail" means neither TMDB resolver nor FileBot-based resolver can resolve a movie id.
 			_, ok := res.ResolveMovie(r.Context(), g.Title, g.Year)
+			if !ok {
+				if fb, fbOK := library.ResolveWithFileBot(r.Context(), cfg, filename); fbOK && fb.TMDB > 0 {
+					ok = true
+				}
+			}
 			if ok {
 				continue
 			}
 
 			out = append(out, reviewItem{
-				ImportID:      importID,
-				FileIdx:       idx,
-				Filename:      filename,
-				Bytes:         bytes,
-				GuessTitle:    g.Title,
-				GuessYear:     g.Year,
-				GuessQuality:  g.Quality,
+				ImportID:     importID,
+				FileIdx:      idx,
+				Filename:     filename,
+				Bytes:        bytes,
+				GuessTitle:   g.Title,
+				GuessYear:    g.Year,
+				GuessQuality: g.Quality,
 			})
 			if len(out) >= 50 {
 				break

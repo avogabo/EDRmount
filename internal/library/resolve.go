@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +41,8 @@ func (r *Resolver) ResolveMovie(ctx context.Context, title string, year int) (tm
 	if !r.Enabled() {
 		return tmdb.MovieSearchResult{}, false
 	}
-	key := fmt.Sprintf("m:%s:%d", strings.ToLower(strings.TrimSpace(title)), year)
+	baseTitle := strings.TrimSpace(title)
+	key := fmt.Sprintf("m:%s:%d", strings.ToLower(baseTitle), year)
 	r.mu.Lock()
 	if v, ok := r.movieCache[key]; ok {
 		r.mu.Unlock()
@@ -50,10 +52,24 @@ func (r *Resolver) ResolveMovie(ctx context.Context, title string, year int) (tm
 
 	cctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	res, err := r.c.SearchMovie(cctx, title, year)
-	if err != nil || len(res) == 0 {
+
+	searchTitles := []string{baseTitle}
+	if cleaned := sanitizeMovieQuery(baseTitle, year); cleaned != "" && !strings.EqualFold(cleaned, baseTitle) {
+		searchTitles = append(searchTitles, cleaned)
+	}
+
+	var res []tmdb.MovieSearchResult
+	for _, q := range searchTitles {
+		out, err := r.c.SearchMovie(cctx, q, year)
+		if err == nil && len(out) > 0 {
+			res = out
+			break
+		}
+	}
+	if len(res) == 0 {
 		return tmdb.MovieSearchResult{}, false
 	}
+
 	best := res[0]
 	if year > 0 {
 		for _, it := range res {
@@ -74,7 +90,8 @@ func (r *Resolver) ResolveTV(ctx context.Context, title string, year int) (tmdb.
 	if !r.Enabled() {
 		return tmdb.TVDetails{}, false
 	}
-	key := fmt.Sprintf("t:%s:%d", strings.ToLower(strings.TrimSpace(title)), year)
+	baseTitle := strings.TrimSpace(title)
+	key := fmt.Sprintf("t:%s:%d", strings.ToLower(baseTitle), year)
 	r.mu.Lock()
 	if v, ok := r.tvCache[key]; ok {
 		r.mu.Unlock()
@@ -84,10 +101,24 @@ func (r *Resolver) ResolveTV(ctx context.Context, title string, year int) (tmdb.
 
 	cctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	res, err := r.c.SearchTV(cctx, title, year)
-	if err != nil || len(res) == 0 {
+
+	searchTitles := []string{baseTitle}
+	if cleaned := sanitizeTVQuery(baseTitle, year); cleaned != "" && !strings.EqualFold(cleaned, baseTitle) {
+		searchTitles = append(searchTitles, cleaned)
+	}
+
+	var res []tmdb.TVSearchResult
+	for _, q := range searchTitles {
+		out, err := r.c.SearchTV(cctx, q, year)
+		if err == nil && len(out) > 0 {
+			res = out
+			break
+		}
+	}
+	if len(res) == 0 {
 		return tmdb.TVDetails{}, false
 	}
+
 	best := res[0]
 	if year > 0 {
 		for _, it := range res {
@@ -131,4 +162,61 @@ func (r *Resolver) ResolveEpisodeTitle(ctx context.Context, tvID, season, episod
 	r.epCache[key] = name
 	r.mu.Unlock()
 	return name, true
+}
+
+var movieNoiseTokens = []string{
+	"web dl", "web-dl", "web", "bluray", "bdrip", "brrip", "hdrip", "dvdrip",
+	"1080p", "720p", "2160p", "4k", "x264", "x265", "hevc", "avc", "h264", "h265",
+	"ddp", "dd+", "aac", "ac3", "dts", "truehd", "atmos", "remux", "proper", "repack",
+	"hdz", "subs", "multi", "espa", "castellano", "dual", "copy",
+}
+
+func sanitizeMovieQuery(in string, year int) string {
+	return sanitizeQuery(in, year)
+}
+
+func sanitizeTVQuery(in string, year int) string {
+	s := sanitizeQuery(in, year)
+	if s == "" {
+		return s
+	}
+	// Remove trailing episode-like fragments that may survive generic cleaning.
+	reEp := regexp.MustCompile(`(?i)\b\d{1,2}x\d{1,2}\b.*$`)
+	s = strings.TrimSpace(reEp.ReplaceAllString(s, ""))
+	if s == "" {
+		return sanitizeQuery(in, year)
+	}
+	return s
+}
+
+func sanitizeQuery(in string, year int) string {
+	s := strings.TrimSpace(in)
+	if s == "" {
+		return ""
+	}
+	low := strings.ToLower(s)
+	for _, t := range movieNoiseTokens {
+		low = strings.ReplaceAll(low, t, " ")
+	}
+	if year > 0 {
+		y := fmt.Sprintf("%d", year)
+		low = strings.ReplaceAll(low, "("+y+")", " ")
+		low = strings.ReplaceAll(low, y, " ")
+	}
+	// remove leftover symbols and collapse spaces
+	re := regexp.MustCompile(`[^a-z0-9& ]+`)
+	low = re.ReplaceAllString(low, " ")
+	low = strings.TrimSpace(strings.Join(strings.Fields(low), " "))
+	if low == "" {
+		return strings.TrimSpace(in)
+	}
+	parts := strings.Fields(low)
+	for i, p := range parts {
+		if len(p) > 1 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		} else {
+			parts[i] = strings.ToUpper(p)
+		}
+	}
+	return strings.Join(parts, " ")
 }

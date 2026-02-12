@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/db"
@@ -16,8 +17,8 @@ type Type string
 type State string
 
 const (
-	TypeImport Type = "import_nzb"
-	TypeUpload Type = "upload_media"
+	TypeImport       Type = "import_nzb"
+	TypeUpload       Type = "upload_media"
 	TypeHealthRepair Type = "health_repair_nzb"
 	TypeHealthScan   Type = "health_scan_nzb"
 
@@ -55,11 +56,45 @@ func (s *Store) Enqueue(ctx context.Context, t Type, payload any) (*Job, error) 
 	if t == "" {
 		return nil, errors.New("job type required")
 	}
-	id, err := newID()
+	p, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	p, err := json.Marshal(payload)
+
+	// Dedupe active jobs by (type + payload.path) to avoid double enqueue
+	// when the same file is picked by watcher and manual action at once.
+	if path := payloadPath(p); path != "" {
+		rows, err := s.db.SQL.QueryContext(ctx,
+			`SELECT id,type,state,created_at,updated_at,payload_json,error FROM jobs WHERE type=? AND state IN (?,?) ORDER BY created_at DESC LIMIT 100`,
+			string(t), string(StateQueued), string(StateRunning),
+		)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var (
+					id, typ, st, payloadJSON string
+					created, updated         int64
+					errStr                   *string
+				)
+				if err := rows.Scan(&id, &typ, &st, &created, &updated, &payloadJSON, &errStr); err != nil {
+					continue
+				}
+				if strings.EqualFold(payloadPath([]byte(payloadJSON)), path) {
+					return &Job{
+						ID:        id,
+						Type:      Type(typ),
+						State:     State(st),
+						CreatedAt: time.Unix(created, 0),
+						UpdatedAt: time.Unix(updated, 0),
+						Payload:   json.RawMessage(payloadJSON),
+						Error:     errStr,
+					}, nil
+				}
+			}
+		}
+	}
+
+	id, err := newID()
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +105,15 @@ func (s *Store) Enqueue(ctx context.Context, t Type, payload any) (*Job, error) 
 		return nil, err
 	}
 	return &Job{ID: id, Type: t, State: StateQueued, CreatedAt: now, UpdatedAt: now, Payload: p}, nil
+}
+
+func payloadPath(payloadJSON []byte) string {
+	var m map[string]any
+	if err := json.Unmarshal(payloadJSON, &m); err != nil {
+		return ""
+	}
+	v, _ := m["path"].(string)
+	return strings.TrimSpace(v)
 }
 
 func (s *Store) List(ctx context.Context, limit int) ([]Job, error) {

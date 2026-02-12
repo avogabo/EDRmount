@@ -15,7 +15,7 @@ RUN go build -ldflags "-X github.com/gaby/EDRmount/internal/version.Version=${VE
 RUN go install github.com/javi11/nzb-repair@v0.0.3
 
 FROM ubuntu:jammy AS runtime
-RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 openjdk-17-jre-headless xz-utils mediainfo libmediainfo0v5 libmms0 && rm -rf /var/lib/apt/lists/*
 
 # ngpost's bundled Qt expects OpenSSL 1.1 (libcrypto.so.1.1/libssl.so.1.1).
 # Ubuntu jammy ships OpenSSL 3, so we temporarily add focal to install libssl1.1.
@@ -40,6 +40,9 @@ RUN make -j"$(nproc)"
 RUN make install DESTDIR=/out
 
 FROM runtime
+
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 COPY --from=build /out/edrmount /usr/local/bin/edrmount
 COPY --from=build /go/bin/nzb-repair /usr/local/bin/nzb-repair
@@ -66,11 +69,32 @@ RUN printf '%s\n' \
   > /usr/local/bin/ngpost \
   && chmod +x /usr/local/bin/ngpost
 
+# ---- FileBot (portable) ----
+ARG FILEBOT_VERSION=5.1.6
+RUN mkdir -p /opt/filebot \
+  && curl -L -o /tmp/filebot.tar.xz "https://get.filebot.net/filebot/FileBot_${FILEBOT_VERSION}/FileBot_${FILEBOT_VERSION}-portable.tar.xz" \
+  && tar -xJf /tmp/filebot.tar.xz -C /opt/filebot \
+  && rm -f /tmp/filebot.tar.xz \
+  && chmod +x /opt/filebot/filebot.sh \
+  && ln -sf /opt/filebot/filebot.sh /usr/local/bin/filebot
+
 # ---- nyuu (Nyuu-Obfuscation fork) ----
-# Nyuu is node-based. We install it via npm from the fork repo.
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm git python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
-RUN npm install -g --production --unsafe-perm git+https://github.com/Antidote2151/Nyuu-Obfuscation.git
+# Nyuu is node-based and OPTIONAL for local builds/tests.
+ARG INSTALL_NYUU=1
+RUN if [ "$INSTALL_NYUU" = "1" ]; then \
+    set -e; \
+    for i in 1 2 3; do \
+      echo "apt attempt $i"; \
+      apt-get update && \
+      apt-get install -y --no-install-recommends --fix-missing nodejs npm git python3 make g++ && \
+      break; \
+      sleep 5; \
+    done; \
+    rm -rf /var/lib/apt/lists/*; \
+    npm install -g --production --unsafe-perm git+https://github.com/Antidote2151/Nyuu-Obfuscation.git; \
+  else \
+    echo "Skipping nyuu install (INSTALL_NYUU=0)"; \
+  fi
 
 # runtime dirs
 RUN mkdir -p /config /host /cache /backups

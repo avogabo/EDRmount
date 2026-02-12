@@ -39,6 +39,22 @@ type Upload struct {
 	Par      UploadPar `json:"par"`
 }
 
+type FileBot struct {
+	Enabled      bool   `json:"enabled"`
+	Binary       string `json:"binary"` // e.g. /usr/local/bin/filebot
+	LicensePath  string `json:"license_path"` // e.g. /config/filebot/license.psm
+	DB           string `json:"db"`     // e.g. TheMovieDB
+	Language     string `json:"language"`
+	MovieFormat  string `json:"movie_format"`
+	SeriesFormat string `json:"series_format"`
+	Action       string `json:"action"` // test|move|copy|symlink
+}
+
+type Rename struct {
+	Provider string  `json:"provider"` // builtin|filebot
+	FileBot  FileBot `json:"filebot"`
+}
+
 type WatchKind struct {
 	Enabled   bool   `json:"enabled"`
 	Dir       string `json:"dir"`
@@ -67,12 +83,13 @@ type Config struct {
 	NgPost   NgPost           `json:"ngpost"`
 	Download DownloadProvider `json:"download"`
 
-	Library  Library  `json:"library"`
-	Metadata Metadata `json:"metadata"`
-	Plex     Plex     `json:"plex"`
-	Upload   Upload   `json:"upload"`
-	Watch    Watch    `json:"watch"`
-	Backups  Backups  `json:"backups"`
+	Library  Library      `json:"library"`
+	Metadata Metadata     `json:"metadata"`
+	Plex     Plex         `json:"plex"`
+	Upload   Upload       `json:"upload"`
+	Rename   Rename       `json:"rename"`
+	Watch    Watch        `json:"watch"`
+	Backups  Backups      `json:"backups"`
 	Health   HealthConfig `json:"health"`
 }
 
@@ -87,28 +104,38 @@ func Default() Config {
 			CacheDir:      "/cache",
 			CacheMaxBytes: 50 * 1024 * 1024 * 1024,
 		},
-		Runner:   Runner{Enabled: true, Mode: "exec"},  // default: real execution (not stub)
+		Runner: Runner{Enabled: true, Mode: "exec"}, // default: real execution (not stub)
 
 		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb", Obfuscate: true},
 		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 2},
 		Library:  (Library{Enabled: true, UppercaseFolders: true}).withDefaults(),
 		Metadata: (Metadata{}).withDefaults(),
 		Plex:     (Plex{}).withDefaults(),
-		Upload: Upload{Provider: "ngpost", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: true, Dir: "/host/inbox/par2"}},
+		Upload:   Upload{Provider: "ngpost", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: true, Dir: "/host/inbox/par2"}},
+		Rename: Rename{Provider: "builtin", FileBot: FileBot{
+			Enabled:      false,
+			Binary:       "/usr/local/bin/filebot",
+			LicensePath:  "/config/filebot/license.psm",
+			DB:           "TheMovieDB",
+			Language:     "es",
+			MovieFormat:  "{n} ({y})",
+			SeriesFormat: "{n} - {s00e00} - {t}",
+			Action:       "test",
+		}},
 		Watch: Watch{
 			NZB:   WatchKind{Enabled: true, Dir: "/host/inbox/nzb", Recursive: true},
 			Media: WatchKind{Enabled: false, Dir: "/host/inbox/media", Recursive: true},
 		},
-		Backups:  (Backups{Enabled: false, Dir: "/backups", EveryMins: 0, Keep: 30, CompressGZ: true}),
+		Backups: (Backups{Enabled: false, Dir: "/backups", EveryMins: 0, Keep: 30, CompressGZ: true}),
 		Health: HealthConfig{
 			Enabled:   true,
 			BackupDir: "/cache/health-bak",
 			Scan: HealthScanConfig{
 				Enabled:            false,
-				IntervalHours:       24,
-				ChunkEveryHours:     24,
-				MaxDurationMinutes:  180,
-				AutoRepair:          true,
+				IntervalHours:      24,
+				ChunkEveryHours:    24,
+				MaxDurationMinutes: 180,
+				AutoRepair:         true,
 			},
 			Lock: HealthLockConfig{LockTTLHours: 6},
 		},
@@ -155,6 +182,24 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.Upload.Provider == "" {
 		cfg.Upload.Provider = "ngpost"
+	}
+	if cfg.Rename.Provider == "" {
+		cfg.Rename.Provider = "builtin"
+	}
+	if strings.TrimSpace(cfg.Rename.FileBot.Binary) == "" {
+		cfg.Rename.FileBot.Binary = "/usr/local/bin/filebot"
+	}
+	if strings.TrimSpace(cfg.Rename.FileBot.LicensePath) == "" {
+		cfg.Rename.FileBot.LicensePath = "/config/filebot/license.psm"
+	}
+	if strings.TrimSpace(cfg.Rename.FileBot.DB) == "" {
+		cfg.Rename.FileBot.DB = "TheMovieDB"
+	}
+	if strings.TrimSpace(cfg.Rename.FileBot.Language) == "" {
+		cfg.Rename.FileBot.Language = "es"
+	}
+	if strings.TrimSpace(cfg.Rename.FileBot.Action) == "" {
+		cfg.Rename.FileBot.Action = "test"
 	}
 	// Upload PAR defaults
 	if cfg.Upload.Par.RedundancyPercent <= 0 {
@@ -230,6 +275,14 @@ func (c Config) Validate() error {
 	default:
 		return errors.New("upload.provider must be ngpost|nyuu")
 	}
+	// Rename provider
+	switch c.Rename.Provider {
+	case "", "builtin", "filebot":
+		// ok
+	default:
+		return errors.New("rename.provider must be builtin|filebot")
+	}
+
 	// Plex
 	if c.Plex.Enabled {
 		if c.Plex.BaseURL == "" {

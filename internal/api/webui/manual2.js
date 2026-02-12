@@ -6,14 +6,14 @@ async function refreshManual() {
   // Breadcrumb
   const crumbsBox = document.getElementById('manCrumbs');
   crumbsBox.innerHTML = '';
-  const path = await apiGet(`/api/v1/manual/path?dir_id=${encodeURIComponent(manDirId)}`);
+  const path = await apiGet(`/api/v1/manual/path?dir_id=${encodeURIComponent(manualDirId)}`);
   let lastId = 'root';
   for (let i = 0; i < path.length; i++) {
     const d = path[i];
     const id = d.id;
     const b = el('button', { class: 'crumb', type: 'button', text: d.name });
     b.onclick = () => {
-      manDirId = id;
+      manualDirId = id;
       refreshManual().catch(err => setStatus('manStatus', String(err)));
     };
     crumbsBox.appendChild(b);
@@ -22,20 +22,24 @@ async function refreshManual() {
   }
 
   // Load dirs + items
-  const dirs = await apiGet(`/api/v1/manual/dirs?parent_id=${encodeURIComponent(manDirId)}`);
-  const items = await apiGet(`/api/v1/manual/items?dir_id=${encodeURIComponent(manDirId)}`);
+  const dirs = await apiGet(`/api/v1/manual/dirs?parent_id=${encodeURIComponent(manualDirId)}`);
+  const items = await apiGet(`/api/v1/manual/items?dir_id=${encodeURIComponent(manualDirId)}`);
 
-  // Load all dirs once (for move-to)
-  manDirsAll = await apiGet('/api/v1/manual/dirs/all');
+  // Optional controls (move/edit) exist only on some UI layouts.
+  // If they are missing, we keep Manual as a simple browser (no crash).
   const moveSel = document.getElementById('manMoveTo');
-  moveSel.innerHTML = '';
-  moveSel.appendChild(el('option', { value: '', text: '(mantener / keep current)' }));
-  for (const d of manDirsAll) {
-    const opt = document.createElement('option');
-    opt.value = d.id;
-    // show a simple path hint
-    opt.textContent = d.name + `  (${d.id.slice(0,6)})`;
-    moveSel.appendChild(opt);
+  if (moveSel) {
+    // Load all dirs once (for move-to)
+    manDirsAll = await apiGet('/api/v1/manual/dirs/all');
+    moveSel.innerHTML = '';
+    moveSel.appendChild(el('option', { value: '', text: '(mantener / keep current)' }));
+    for (const d of manDirsAll) {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      // show a simple path hint
+      opt.textContent = d.name + `  (${d.id.slice(0,6)})`;
+      moveSel.appendChild(opt);
+    }
   }
 
   // Render list (folders first, then items)
@@ -51,7 +55,7 @@ async function refreshManual() {
     row.appendChild(el('div', { class: 'mono muted', text: 'folder' }));
     row.appendChild(el('div', { class: 'mono muted', text: d.id.slice(0,8) }));
     row.onclick = () => {
-      manDirId = d.id;
+      manualDirId = d.id;
       refreshManual().catch(err => setStatus('manStatus', String(err)));
     };
     list.appendChild(row);
@@ -68,9 +72,12 @@ async function refreshManual() {
 
     row.onclick = () => {
       manSelectedItemId = it.id;
-      document.getElementById('manSel').textContent = `id=${it.id.slice(0,8)} import=${(it.import_id||'').slice(0,8)} idx=${it.file_idx}`;
-      document.getElementById('manEditLabel').value = it.label || '';
-      document.getElementById('manMoveTo').value = '';
+      const sel = document.getElementById('manSel');
+      if (sel) sel.textContent = `id=${it.id.slice(0,8)} import=${(it.import_id||'').slice(0,8)} idx=${it.file_idx}`;
+      const edit = document.getElementById('manEditLabel');
+      if (edit) edit.value = it.label || '';
+      const mv = document.getElementById('manMoveTo');
+      if (mv) mv.value = '';
       setStatus('manActionStatus', '');
     };
 
@@ -85,7 +92,7 @@ async function createManualFolder2() {
   if (!name) return;
   document.getElementById('manCreateStatus').textContent = 'Creando...';
   try {
-    await apiPostJson('/api/v1/manual/dirs', { parent_id: manDirId, name });
+    await apiPostJson('/api/v1/manual/dirs', { parent_id: manualDirId, name });
     document.getElementById('manNewFolder').value = '';
     document.getElementById('manCreateStatus').textContent = 'Creado.';
     await refreshManual();

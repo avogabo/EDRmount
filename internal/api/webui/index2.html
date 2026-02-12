@@ -209,22 +209,22 @@
           </div>
 
           <div id="autoPane">
-            <div id="importsBox" class="list" style="padding:12px; margin-bottom:10px">
-              <div class="row" style="justify-content:space-between">
-                <div>
-                  <b>📦 Imports recientes (Recent imports)</b>
-                  <div class="muted" style="margin-top:4px">Borrar global elimina el import de la biblioteca (auto+manual). No borra el NZB del disco.</div>
-                </div>
-                <button class="btn" id="btnImportsRefresh">Actualizar</button>
-              </div>
-              <div class="list" style="margin-top:10px">
-                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 150px;">
-                  <div>Import (NZB)</div>
+                                    <div class="row" style="margin-top:10px">
+              <div class="crumbs" id="autoCrumbs"></div>
+              <button class="btn" id="btnAutoUp">Arriba (Up)</button>
+              <button class="btn" id="btnAutoRefresh">Actualizar (Refresh)</button>
+              <span class="muted" id="autoStatus"></span>
+            </div>
+
+            <div class="grid">
+              <div class="list">
+                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 70px;">
+                  <div>Nombre (Name)</div>
                   <div class="mono">Size</div>
-                  <div class="mono">ImportedAt</div>
+                  <div class="mono">ModTime</div>
                   <div>Acción</div>
                 </div>
-                <div id="importsList"></div>
+                <div id="autoList"></div>
               </div>
             </div>
 
@@ -279,24 +279,6 @@
               </div>
             </div>
 
-            <div class="row" style="margin-top:10px">
-              <div class="crumbs" id="autoCrumbs"></div>
-              <button class="btn" id="btnAutoUp">Arriba (Up)</button>
-              <button class="btn" id="btnAutoRefresh">Actualizar (Refresh)</button>
-              <span class="muted" id="autoStatus"></span>
-            </div>
-
-            <div class="grid">
-              <div class="list">
-                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 70px;">
-                  <div>Nombre (Name)</div>
-                  <div class="mono">Size</div>
-                  <div class="mono">ModTime</div>
-                  <div>Acción</div>
-                </div>
-                <div id="autoList"></div>
-              </div>
-            </div>
           </div>
 
           <div id="manualPane" class="hide">
@@ -745,6 +727,47 @@
                 <span class="muted">Ej: es-ES / en-US</span>
               </div>
             </div>
+
+            <div class="list" style="padding:12px">
+              <b>Rename (Fase 1 pre-NZB)</b>
+              <div class="muted" style="margin-top:6px">Proveedor de limpieza/normalización de nombre antes de generar NZB.</div>
+
+              <div class="row" style="margin-top:10px; gap:12px; flex-wrap:wrap">
+                <label class="muted">Provider
+                  <select id="setRenameProvider" style="min-width:180px; margin-left:8px">
+                    <option value="builtin">builtin</option>
+                    <option value="filebot">filebot</option>
+                  </select>
+                </label>
+                <label class="muted"><input type="checkbox" id="setFileBotEnabled" /> Activar FileBot</label>
+              </div>
+
+              <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
+                <label class="muted">Binary
+                  <input id="setFileBotBinary" style="min-width:280px; margin-left:8px" placeholder="/usr/local/bin/filebot" />
+                </label>
+                <label class="muted">License path
+                  <input id="setFileBotLicensePath" style="min-width:320px; margin-left:8px" placeholder="/config/filebot/license.psm" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
+                <label class="muted">DB
+                  <input id="setFileBotDB" style="min-width:180px; margin-left:8px" placeholder="TheMovieDB" />
+                </label>
+                <label class="muted">Language
+                  <input id="setFileBotLanguage" style="min-width:120px; margin-left:8px" placeholder="es" />
+                </label>
+                <label class="muted">Action
+                  <select id="setFileBotAction" style="min-width:140px; margin-left:8px">
+                    <option value="test">test</option>
+                    <option value="move">move</option>
+                    <option value="copy">copy</option>
+                    <option value="symlink">symlink</option>
+                  </select>
+                </label>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -792,7 +815,6 @@
   </div>
 
   <script src="/webui/app2.js"></script>
-  <script src="/webui/manual2.js"></script>
   <script src="/webui/upload2.js"></script>
 </body>
 </html>

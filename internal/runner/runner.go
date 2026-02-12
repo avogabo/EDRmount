@@ -147,7 +147,16 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		if outDir == "" {
 			outDir = "/host/inbox/nzb"
 		}
-		base := strings.TrimSuffix(filepath.Base(p.Path), filepath.Ext(p.Path))
+		normalizedInputPath := p.Path
+		if np, changed, nerr := maybeNormalizeWithFileBot(ctx, cfg, p.Path, func(line string) {
+			_ = r.jobs.AppendLog(ctx, j.ID, line)
+		}); nerr != nil {
+			_ = r.jobs.AppendLog(ctx, j.ID, "filebot: WARN: "+nerr.Error())
+		} else if changed {
+			normalizedInputPath = np
+			_ = r.jobs.AppendLog(ctx, j.ID, "filebot: normalized for naming -> "+filepath.Base(np))
+		}
+		base := strings.TrimSuffix(filepath.Base(normalizedInputPath), filepath.Ext(normalizedInputPath))
 
 		// IMPORTANT: write NZB to staging first so the import watcher never sees an incomplete NZB.
 		cacheDir := cfg.Paths.CacheDir
@@ -158,7 +167,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		_ = os.MkdirAll(stagingDir, 0o755)
 		stagingNZB := filepath.Join(stagingDir, fmt.Sprintf("%s-%s.nzb", base, j.ID))
 
-		finalNZB := buildRawNZBPath(cfg, p.Path, outDir)
+		finalNZB := buildRawNZBPath(cfg, normalizedInputPath, outDir)
 
 		lastProgress := -1
 		emitProgress := func(p int) {
@@ -578,8 +587,9 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 			fileName = safe(seriesName) + ".nzb"
 		}
 
-		// NZB layout for series: SERIES/#/A/.../Perdidos (2004)/<file>.nzb
-		rel := filepath.Join(l.SeriesRoot, "#", initial, seriesFolder, fileName)
+		// NZB layout for series: SERIES/A/.../Perdidos (2004)/<file>.nzb
+		// (If title starts with non-letter, InitialFolder already returns "#").
+		rel := filepath.Join(l.SeriesRoot, initial, seriesFolder, fileName)
 		if cfg.Library.UppercaseFolders {
 			rel = library.ApplyUppercaseFolders(rel)
 		}
@@ -590,7 +600,10 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 	year := g.Year
 	yearPart := ""
 	if year > 0 {
-		yearPart = fmt.Sprintf(" (%d)", year)
+		// Avoid duplicating year when title already includes "(YYYY)".
+		if !strings.Contains(strings.ToLower(movieTitle), fmt.Sprintf("(%d)", year)) {
+			yearPart = fmt.Sprintf(" (%d)", year)
+		}
 	}
 	movieFolder := safe(movieTitle + yearPart)
 	fileName := movieFolder + ".nzb"
