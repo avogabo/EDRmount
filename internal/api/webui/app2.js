@@ -685,8 +685,6 @@ async function loadUploadSettings() {
   document.getElementById('setFileBotLicensePath').value = fb.license_path || '/config/filebot/license.psm';
   document.getElementById('setFileBotDB').value = fb.db || 'TheMovieDB';
   document.getElementById('setFileBotLanguage').value = fb.language || 'es';
-  document.getElementById('setFileBotMovieFormat').value = fb.movie_format || '{n} ({y})';
-  document.getElementById('setFileBotSeriesFormat').value = fb.series_format || '{n} - {s00e00} - {t}';
 
   set('');
 }
@@ -789,8 +787,6 @@ async function saveUploadSettings() {
     cfg.rename.filebot.license_path = _val('setFileBotLicensePath') || '/config/filebot/license.psm';
     cfg.rename.filebot.db = _val('setFileBotDB') || 'TheMovieDB';
     cfg.rename.filebot.language = _val('setFileBotLanguage') || 'es';
-    cfg.rename.filebot.movie_format = _val('setFileBotMovieFormat') || '{n} ({y})';
-    cfg.rename.filebot.series_format = _val('setFileBotSeriesFormat') || '{n} - {s00e00} - {t}';
     cfg.rename.filebot.action = 'test';
 
     set('Guardando… (Saving)');
