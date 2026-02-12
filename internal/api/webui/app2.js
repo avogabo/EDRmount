@@ -679,16 +679,14 @@ async function loadUploadSettings() {
   document.getElementById('setTMDBApiKey').value = t.api_key || '';
   document.getElementById('setTMDBLanguage').value = t.language || 'es-ES';
 
-  // Rename / FileBot
+  // Rename / FileBot (mandatory)
   const rn = (cfg.rename || {});
   const fb = (rn.filebot || {});
-  document.getElementById('setRenameProvider').value = rn.provider || 'builtin';
-  document.getElementById('setFileBotEnabled').checked = !!fb.enabled;
-  document.getElementById('setFileBotBinary').value = fb.binary || '/usr/local/bin/filebot';
   document.getElementById('setFileBotLicensePath').value = fb.license_path || '/config/filebot/license.psm';
   document.getElementById('setFileBotDB').value = fb.db || 'TheMovieDB';
   document.getElementById('setFileBotLanguage').value = fb.language || 'es';
-  document.getElementById('setFileBotAction').value = fb.action || 'test';
+  document.getElementById('setFileBotMovieFormat').value = fb.movie_format || '{n} ({y})';
+  document.getElementById('setFileBotSeriesFormat').value = fb.series_format || '{n} - {s00e00} - {t}';
 
   set('');
 }
@@ -782,16 +780,18 @@ async function saveUploadSettings() {
     cfg.metadata.tmdb.api_key = _val('setTMDBApiKey');
     cfg.metadata.tmdb.language = _val('setTMDBLanguage') || 'es-ES';
 
-    // Rename / FileBot
+    // Rename / FileBot (mandatory, used in phase 1 and phase 2)
     cfg.rename = cfg.rename || {};
-    cfg.rename.provider = _val('setRenameProvider') || 'builtin';
+    cfg.rename.provider = 'filebot';
     cfg.rename.filebot = cfg.rename.filebot || {};
-    cfg.rename.filebot.enabled = _bool('setFileBotEnabled');
-    cfg.rename.filebot.binary = _val('setFileBotBinary') || '/usr/local/bin/filebot';
+    cfg.rename.filebot.enabled = true;
+    cfg.rename.filebot.binary = '/usr/local/bin/filebot';
     cfg.rename.filebot.license_path = _val('setFileBotLicensePath') || '/config/filebot/license.psm';
     cfg.rename.filebot.db = _val('setFileBotDB') || 'TheMovieDB';
     cfg.rename.filebot.language = _val('setFileBotLanguage') || 'es';
-    cfg.rename.filebot.action = _val('setFileBotAction') || 'test';
+    cfg.rename.filebot.movie_format = _val('setFileBotMovieFormat') || '{n} ({y})';
+    cfg.rename.filebot.series_format = _val('setFileBotSeriesFormat') || '{n} - {s00e00} - {t}';
+    cfg.rename.filebot.action = 'test';
 
     set('Guardando… (Saving)');
     await apiPutJson('/api/v1/config', cfg);

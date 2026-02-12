@@ -729,42 +729,27 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Rename (Fase 1 pre-NZB)</b>
-              <div class="muted" style="margin-top:6px">Proveedor de limpieza/normalización de nombre antes de generar NZB.</div>
-
-              <div class="row" style="margin-top:10px; gap:12px; flex-wrap:wrap">
-                <label class="muted">Provider
-                  <select id="setRenameProvider" style="min-width:180px; margin-left:8px">
-                    <option value="builtin">builtin</option>
-                    <option value="filebot">filebot</option>
-                  </select>
-                </label>
-                <label class="muted"><input type="checkbox" id="setFileBotEnabled" /> Activar FileBot</label>
-              </div>
+              <b>Renombrado Auto (FileBot · Fase 1 + Fase 2)</b>
+              <div class="muted" style="margin-top:6px">FileBot es obligatorio y se usa tanto antes del NZB como en library-auto.</div>
 
               <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
-                <label class="muted">Binary
-                  <input id="setFileBotBinary" style="min-width:280px; margin-left:8px" placeholder="/usr/local/bin/filebot" />
-                </label>
                 <label class="muted">License path
-                  <input id="setFileBotLicensePath" style="min-width:320px; margin-left:8px" placeholder="/config/filebot/license.psm" />
+                  <input id="setFileBotLicensePath" style="min-width:360px; margin-left:8px" placeholder="/config/filebot/license.psm" />
                 </label>
-              </div>
-
-              <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
                 <label class="muted">DB
                   <input id="setFileBotDB" style="min-width:180px; margin-left:8px" placeholder="TheMovieDB" />
                 </label>
                 <label class="muted">Language
                   <input id="setFileBotLanguage" style="min-width:120px; margin-left:8px" placeholder="es" />
                 </label>
-                <label class="muted">Action
-                  <select id="setFileBotAction" style="min-width:140px; margin-left:8px">
-                    <option value="test">test</option>
-                    <option value="move">move</option>
-                    <option value="copy">copy</option>
-                    <option value="symlink">symlink</option>
-                  </select>
+              </div>
+
+              <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
+                <label class="muted">Formato película
+                  <input id="setFileBotMovieFormat" style="min-width:340px; margin-left:8px" placeholder="{n} ({y})" />
+                </label>
+                <label class="muted">Formato serie
+                  <input id="setFileBotSeriesFormat" style="min-width:340px; margin-left:8px" placeholder="{n} - {s00e00} - {t}" />
                 </label>
               </div>
             </div>

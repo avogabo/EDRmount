@@ -41,9 +41,9 @@ type Upload struct {
 
 type FileBot struct {
 	Enabled      bool   `json:"enabled"`
-	Binary       string `json:"binary"` // e.g. /usr/local/bin/filebot
+	Binary       string `json:"binary"`       // e.g. /usr/local/bin/filebot
 	LicensePath  string `json:"license_path"` // e.g. /config/filebot/license.psm
-	DB           string `json:"db"`     // e.g. TheMovieDB
+	DB           string `json:"db"`           // e.g. TheMovieDB
 	Language     string `json:"language"`
 	MovieFormat  string `json:"movie_format"`
 	SeriesFormat string `json:"series_format"`
@@ -112,8 +112,8 @@ func Default() Config {
 		Metadata: (Metadata{}).withDefaults(),
 		Plex:     (Plex{}).withDefaults(),
 		Upload:   Upload{Provider: "ngpost", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: true, Dir: "/host/inbox/par2"}},
-		Rename: Rename{Provider: "builtin", FileBot: FileBot{
-			Enabled:      false,
+		Rename: Rename{Provider: "filebot", FileBot: FileBot{
+			Enabled:      true,
 			Binary:       "/usr/local/bin/filebot",
 			LicensePath:  "/config/filebot/license.psm",
 			DB:           "TheMovieDB",
@@ -183,9 +183,9 @@ func Load(path string) (Config, error) {
 	if cfg.Upload.Provider == "" {
 		cfg.Upload.Provider = "ngpost"
 	}
-	if cfg.Rename.Provider == "" {
-		cfg.Rename.Provider = "builtin"
-	}
+	// FileBot is mandatory for both rename phases.
+	cfg.Rename.Provider = "filebot"
+	cfg.Rename.FileBot.Enabled = true
 	if strings.TrimSpace(cfg.Rename.FileBot.Binary) == "" {
 		cfg.Rename.FileBot.Binary = "/usr/local/bin/filebot"
 	}
@@ -198,9 +198,7 @@ func Load(path string) (Config, error) {
 	if strings.TrimSpace(cfg.Rename.FileBot.Language) == "" {
 		cfg.Rename.FileBot.Language = "es"
 	}
-	if strings.TrimSpace(cfg.Rename.FileBot.Action) == "" {
-		cfg.Rename.FileBot.Action = "test"
-	}
+	cfg.Rename.FileBot.Action = "test"
 	// Upload PAR defaults
 	if cfg.Upload.Par.RedundancyPercent <= 0 {
 		cfg.Upload.Par.RedundancyPercent = 20
@@ -275,12 +273,9 @@ func (c Config) Validate() error {
 	default:
 		return errors.New("upload.provider must be ngpost|nyuu")
 	}
-	// Rename provider
-	switch c.Rename.Provider {
-	case "", "builtin", "filebot":
-		// ok
-	default:
-		return errors.New("rename.provider must be builtin|filebot")
+	// Rename provider (mandatory: filebot)
+	if strings.TrimSpace(c.Rename.Provider) != "" && c.Rename.Provider != "filebot" {
+		return errors.New("rename.provider must be filebot")
 	}
 
 	// Plex

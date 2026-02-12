@@ -108,9 +108,9 @@
     }
   },
   "rename": {
-    "provider": "builtin",
+    "provider": "filebot",
     "filebot": {
-      "enabled": false,
+      "enabled": true,
       "binary": "/usr/local/bin/filebot",
       "db": "TheMovieDB",
       "language": "es",
