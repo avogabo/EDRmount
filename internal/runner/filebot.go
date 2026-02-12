@@ -30,22 +30,12 @@ func maybeNormalizeWithFileBot(ctx context.Context, cfg config.Config, inputPath
 	}
 
 	g := library.GuessFromFilename(filepath.Base(inputPath))
-	format := strings.TrimSpace(rn.FileBot.MovieFormat)
+	// Phase 1 rename is fixed/internal by design.
+	format := "{n} ({y})"
 	if g.IsSeries {
-		format = strings.TrimSpace(rn.FileBot.SeriesFormat)
+		format = "{n} - {s00e00} - {t}"
 	}
-	if format == "" {
-		if g.IsSeries {
-			format = "{n} - {s00e00} - {t}"
-		} else {
-			format = "{n} ({y})"
-		}
-	}
-
-	action := strings.TrimSpace(rn.FileBot.Action)
-	if action == "" {
-		action = "test"
-	}
+	action := "test"
 	licensePath := strings.TrimSpace(rn.FileBot.LicensePath)
 	if licensePath != "" {
 		if _, err := os.Stat(licensePath); err == nil {
@@ -56,14 +46,9 @@ func maybeNormalizeWithFileBot(ctx context.Context, cfg config.Config, inputPath
 			}, bin, "--license", licensePath)
 		}
 	}
-	db := strings.TrimSpace(rn.FileBot.DB)
-	if db == "" {
-		db = "TheMovieDB"
-	}
-	lang := strings.TrimSpace(rn.FileBot.Language)
-	if lang == "" {
-		lang = "es"
-	}
+	// Fixed/internal for phase 1
+	db := "TheMovieDB"
+	lang := "es"
 
 	args := []string{"-rename", inputPath, "--db", db, "--lang", lang, "--format", format, "--action", action}
 	var lines []string
