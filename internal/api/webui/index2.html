@@ -431,49 +431,7 @@
 
           <div class="grid" style="margin-top:12px">
             <div class="list" style="padding:12px">
-              <b>4) Health (NZB Repair)</b>
-              <div class="muted" style="margin-top:6px">Escaneo y reparación de NZBs incompletos (requiere reinicio).</div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setHealthEnabled" /> Activar health (Enable)</label>
-                <span class="muted">(Backups locales van a <span class="mono">/cache/health-bak</span>)</span>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted"><input type="checkbox" id="setHealthScanEnabled" /> Escaneo automático (Auto scan)</label>
-                <label class="muted"><input type="checkbox" id="setHealthAutoRepair" /> Reparación automática (Auto repair)</label>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Presupuesto por día (Budget)
-                  <input id="setHealthMaxDurationMins" type="number" min="5" step="5" style="width:110px; margin-left:8px" placeholder="180" />
-                  <span class="muted">min</span>
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Reanudar chunk cada (Resume)
-                  <input id="setHealthChunkEveryHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="24" />
-                  <span class="muted">h</span>
-                </label>
-
-                <label class="muted">Tras run completo esperar (After complete)
-                  <input id="setHealthIntervalHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="24" />
-                  <span class="muted">h</span>
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Lock TTL
-                  <input id="setHealthLockTTLHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="6" />
-                  <span class="muted">h</span>
-                </label>
-                <span class="muted">(crea <span class="mono">.health.lock</span> al reparar para evitar doble reparación)</span>
-              </div>
-            </div>
-
-            <div class="list" style="padding:12px">
-              <b>1) Subidas</b>
+              <b>Subidas</b>
               <div class="muted" style="margin-top:6px">Control de subida de media: vigilancia, carpeta, proveedor y NNTP de subida.</div>
 
               <div class="row" style="margin-top:12px">
@@ -534,7 +492,56 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>3) Library auto</b>
+              <b>Importación</b>
+              <div class="muted" style="margin-top:6px">Control del watcher NZB + datos NNTP de descarga (streaming/import).</div>
+
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setWatchNZBEnabled" /> Vigilancia automática (activa por defecto)</label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Ruta carpeta vigilada
+                  <input id="setWatchNZBDir" style="min-width:340px; margin-left:8px" placeholder="/host/inbox/nzb" />
+                </label>
+                <input type="checkbox" id="setWatchNZBRecursive" checked style="display:none" />
+              </div>
+
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setDL_ENABLED" /> Activar descarga (Enable)</label>
+              </div>
+
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Host
+                  <input id="setDL_HOST" style="min-width:240px; margin-left:8px" placeholder="news.example.com" />
+                </label>
+                <label class="muted">Puerto (Port)
+                  <input id="setDL_PORT" type="number" style="width:110px; margin-left:8px" placeholder="563" />
+                </label>
+                <label class="muted"><input type="checkbox" id="setDL_SSL" checked /> SSL</label>
+              </div>
+
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Usuario (User)
+                  <input id="setDL_USER" style="min-width:220px; margin-left:8px" />
+                </label>
+                <label class="muted">Password (Pass)
+                  <input id="setDL_PASS" type="password" style="min-width:220px; margin-left:8px" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Conexiones (Connections)
+                  <input id="setDL_CONN" type="number" style="width:110px; margin-left:8px" placeholder="20" />
+                </label>
+                <label class="muted">Prefetch segmentos (Prefetch)
+                  <input id="setDL_PREFETCH" type="number" style="width:110px; margin-left:8px" placeholder="2" />
+                </label>
+              </div>
+
+              <div class="muted" style="margin-top:10px">Nota: se usa en los mounts FUSE al abrir/leer un archivo (Read triggers download).</div>
+            </div>
+
+            <div class="list" style="padding:12px">
+              <b>Library auto</b>
               <div class="muted" style="margin-top:6px">Estructura de rutas virtuales que ve Plex (apunta Plex a <span class="mono">library-auto</span>).</div>
 
               <div class="row" style="margin-top:12px">
@@ -623,84 +630,6 @@
                 <span class="mono">{movies_root}</span>, <span class="mono">{series_root}</span>
               </div>
               <div class="muted" style="margin-top:6px">Tip: <span class="mono">:00</span> hace padding (01,02…).</div>
-            </div>
-
-            <div class="list" style="padding:12px">
-              <b>5) Plex</b>
-              <div class="muted" style="margin-top:6px">Refresco selectivo tras Import para que Plex detecte el nuevo media.</div>
-              <div class="muted" style="margin-top:6px"><b>Nota:</b> solo aplica a <b>library-auto</b> (la ruta que debe usar Plex). Manual no se refresca.</div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setPlexEnabled" /> Activar Plex refresh (Enable)</label>
-                <label class="muted" style="margin-left:14px"><input type="checkbox" id="setPlexRefreshOnImport" /> Refrescar al importar (Refresh on Import)</label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">URL
-                  <input id="setPlexBaseURL" style="min-width:340px; margin-left:8px" placeholder="http://192.168.1.10:32400" />
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Token
-                  <input id="setPlexToken" type="password" style="min-width:340px; margin-left:8px" placeholder="X-Plex-Token" />
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Plex root (ruta en el servidor Plex)
-                  <input id="setPlexRoot" style="min-width:340px; margin-left:8px" placeholder="/mnt/media/library-auto" />
-                </label>
-              </div>
-            </div>
-
-            <div class="list" style="padding:12px">
-              <b>2) Importación</b>
-              <div class="muted" style="margin-top:6px">Control del watcher NZB + datos NNTP de descarga (streaming/import).</div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setWatchNZBEnabled" /> Vigilancia automática (activa por defecto)</label>
-              </div>
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Ruta carpeta vigilada
-                  <input id="setWatchNZBDir" style="min-width:340px; margin-left:8px" placeholder="/host/inbox/nzb" />
-                </label>
-                <input type="checkbox" id="setWatchNZBRecursive" checked style="display:none" />
-              </div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setDL_ENABLED" /> Activar descarga (Enable)</label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Host
-                  <input id="setDL_HOST" style="min-width:240px; margin-left:8px" placeholder="news.example.com" />
-                </label>
-                <label class="muted">Puerto (Port)
-                  <input id="setDL_PORT" type="number" style="width:110px; margin-left:8px" placeholder="563" />
-                </label>
-                <label class="muted"><input type="checkbox" id="setDL_SSL" checked /> SSL</label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Usuario (User)
-                  <input id="setDL_USER" style="min-width:220px; margin-left:8px" />
-                </label>
-                <label class="muted">Password (Pass)
-                  <input id="setDL_PASS" type="password" style="min-width:220px; margin-left:8px" />
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Conexiones (Connections)
-                  <input id="setDL_CONN" type="number" style="width:110px; margin-left:8px" placeholder="20" />
-                </label>
-                <label class="muted">Prefetch segmentos (Prefetch)
-                  <input id="setDL_PREFETCH" type="number" style="width:110px; margin-left:8px" placeholder="2" />
-                </label>
-              </div>
-
-              <div class="muted" style="margin-top:10px">Nota: se usa en los mounts FUSE al abrir/leer un archivo (Read triggers download).</div>
             </div>
 
             <div class="list" style="padding:12px">
@@ -800,3 +729,75 @@
   <script src="/webui/upload2.js"></script>
 </body>
 </html>
+<div class="list" style="padding:12px">
+              <b>Health (NZB Repair)</b>
+              <div class="muted" style="margin-top:6px">Escaneo y reparación de NZBs incompletos (requiere reinicio).</div>
+
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setHealthEnabled" /> Activar health (Enable)</label>
+                <span class="muted">(Backups locales van a <span class="mono">/cache/health-bak</span>)</span>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted"><input type="checkbox" id="setHealthScanEnabled" /> Escaneo automático (Auto scan)</label>
+                <label class="muted"><input type="checkbox" id="setHealthAutoRepair" /> Reparación automática (Auto repair)</label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Presupuesto por día (Budget)
+                  <input id="setHealthMaxDurationMins" type="number" min="5" step="5" style="width:110px; margin-left:8px" placeholder="180" />
+                  <span class="muted">min</span>
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Reanudar chunk cada (Resume)
+                  <input id="setHealthChunkEveryHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="24" />
+                  <span class="muted">h</span>
+                </label>
+
+                <label class="muted">Tras run completo esperar (After complete)
+                  <input id="setHealthIntervalHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="24" />
+                  <span class="muted">h</span>
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:10px">
+                <label class="muted">Lock TTL
+                  <input id="setHealthLockTTLHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="6" />
+                  <span class="muted">h</span>
+                </label>
+                <span class="muted">(crea <span class="mono">.health.lock</span> al reparar para evitar doble reparación)</span>
+              </div>
+            </div>
+
+            <div class="list" style="padding:12px">
+              <b>Plex</b>
+              <div class="muted" style="margin-top:6px">Refresco selectivo tras Import para que Plex detecte el nuevo media.</div>
+              <div class="muted" style="margin-top:6px"><b>Nota:</b> solo aplica a <b>library-auto</b> (la ruta que debe usar Plex). Manual no se refresca.</div>
+
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setPlexEnabled" /> Activar Plex refresh (Enable)</label>
+                <label class="muted" style="margin-left:14px"><input type="checkbox" id="setPlexRefreshOnImport" /> Refrescar al importar (Refresh on Import)</label>
+              </div>
+
+              <div class="row" style="margin-top:8px">
+                <label class="muted">URL
+                  <input id="setPlexBaseURL" style="min-width:340px; margin-left:8px" placeholder="http://192.168.1.10:32400" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Token
+                  <input id="setPlexToken" type="password" style="min-width:340px; margin-left:8px" placeholder="X-Plex-Token" />
+                </label>
+              </div>
+
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Plex root (ruta en el servidor Plex)
+                  <input id="setPlexRoot" style="min-width:340px; margin-left:8px" placeholder="/mnt/media/library-auto" />
+                </label>
+              </div>
+            </div>
+
+            
