@@ -53,7 +53,10 @@ func maybeNormalizeWithFileBot(ctx context.Context, cfg config.Config, inputPath
 	}
 	lang := "es"
 
-	args := []string{"-rename", inputPath, "--db", db, "--lang", lang, "--format", format, "--action", action, "--non-strict"}
+	args := []string{"-rename", inputPath, "--db", db, "--lang", lang, "--format", format, "--action", action}
+	if g.IsSeries {
+		args = append(args, "-non-strict")
+	}
 	var lines []string
 	err := runCommand(ctx, func(line string) {
 		lines = append(lines, line)
