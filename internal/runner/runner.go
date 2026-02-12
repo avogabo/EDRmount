@@ -276,11 +276,10 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				args = append(args, "-B/", parBase+".par2", inputPath)
 			}
 			if parEnabled {
-				_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
+				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par2: generating for %d input file(s)", max(1, len(args)-4)))
 			}
 			// If par2create does not emit percentages, keep UI alive by ticking progress
 			// (avoid looking stuck at 5% for large files).
-			parStart := time.Now()
 			tickDone := make(chan struct{})
 			stopTick := func() {
 				select {
@@ -306,9 +305,6 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 							p++
 							emitProgress(p)
 						}
-						// emit a heartbeat line so users see it is still working
-						d := time.Since(parStart).Round(time.Second)
-						_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: still generating (elapsed %s)", d))
 					}
 				}
 			}()
@@ -317,13 +313,16 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			if parEnabled {
 				err = runCommand(ctx, func(line string) {
 					clean := strings.TrimSpace(line)
-					_ = r.jobs.AppendLog(ctx, j.ID, clean)
 					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
 						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
 							// Map PAR stage to early progress window (5..20)
 							p2 := 5 + (n * 15 / 100)
 							emitProgress(p2)
 						}
+						return
+					}
+					if clean != "" {
+						_ = r.jobs.AppendLog(ctx, j.ID, clean)
 					}
 				}, "par2", args...)
 			}
@@ -357,7 +356,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				args = append(args,
 					"--subject", "${rand(40)} yEnc ({part}/{parts})",
 					"--message-id", "${rand(24)}-${rand(12)}@nyuu",
-					"--from", "poster <poster@localhost>",
+					"--from", "poster <poster@example.com>",
 				)
 				// NZB output (staging)
 				args = append(args, "-o", stagingNZB, "-O")
