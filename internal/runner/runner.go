@@ -276,7 +276,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				args = append(args, "-B/", parBase+".par2", inputPath)
 			}
 			if parEnabled {
-				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par2: generating for %d input file(s)", max(1, len(args)-4)))
+				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par2: generating parity"))
 			}
 			// If par2create does not emit percentages, keep UI alive by ticking progress
 			// (avoid looking stuck at 5% for large files).
@@ -693,15 +693,6 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 	}
 
 	l := cfg.Library.Defaults()
-	initial := library.InitialFolder(g.Title)
-	if strings.TrimSpace(initial) == "" {
-		initial = "#"
-	}
-
-	// Treat non-letter initials as "#" (folder grouping)
-	if len([]rune(initial)) != 1 || (initial[0] < 'A' || initial[0] > 'Z') {
-		initial = "#"
-	}
 
 	// If inputPath is a directory, treat it as series content (season pack or series folder).
 	isDir := false
@@ -726,9 +717,22 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 			seriesTitle = g.Title
 		}
 		seriesName := safe(seriesTitle)
+		year := g.Year
+		if year <= 0 {
+			res := library.NewResolver(cfg)
+			if tv, ok := res.ResolveTV(context.Background(), seriesName, 0); ok {
+				if y := tv.FirstAirYear(); y > 0 {
+					year = y
+				}
+			}
+		}
 		yearPart := ""
-		if g.Year > 0 {
-			yearPart = fmt.Sprintf(" (%d)", g.Year)
+		if year > 0 {
+			yearPart = fmt.Sprintf(" (%d)", year)
+		}
+		initial := library.InitialFolder(seriesName)
+		if strings.TrimSpace(initial) == "" || len([]rune(initial)) != 1 || (initial[0] < 'A' || initial[0] > 'Z') {
+			initial = "#"
 		}
 		seriesFolder := safe(seriesName + yearPart)
 
@@ -769,6 +773,10 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 	movieFolder := safe(movieTitle + yearPart)
 	fileName := movieFolder + ".nzb"
 
+	initial := library.InitialFolder(movieTitle)
+	if strings.TrimSpace(initial) == "" || len([]rune(initial)) != 1 || (initial[0] < 'A' || initial[0] > 'Z') {
+		initial = "#"
+	}
 	// NZB files: keep them directly under .../<Initial>/ (no extra movie folder).
 	// The FUSE/library view can still expose movie folders for MKVs.
 	rel := filepath.Join(l.MoviesRoot, quality, initial, fileName)

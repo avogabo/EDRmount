@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -39,7 +42,7 @@ func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, er
 	// On container restarts, FUSE mountpoints can be left behind in a disconnected state
 	// ("Transport endpoint is not connected"). Best-effort detach any existing mount so
 	// we can mount cleanly.
-	_ = unix.Unmount(opts.Mountpoint, unix.MNT_DETACH)
+	detachStaleMount(opts.Mountpoint)
 
 	if err := os.MkdirAll(opts.Mountpoint, 0o755); err != nil {
 		return nil, err
@@ -83,4 +86,16 @@ func MountLibraryAuto(ctx context.Context, cfg config.Config, jobs *jobs.Store) 
 	mp := filepath.Join(cfg.Paths.MountPoint, "library-auto")
 	lfs := &LibraryFS{Cfg: cfg, Jobs: jobs}
 	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, lfs)
+}
+
+func detachStaleMount(mp string) {
+	if strings.TrimSpace(mp) == "" {
+		return
+	}
+	for i := 0; i < 3; i++ {
+		_ = unix.Unmount(mp, unix.MNT_DETACH)
+		_, _ = exec.Command("fusermount3", "-uz", mp).CombinedOutput()
+		_, _ = exec.Command("umount", "-l", mp).CombinedOutput()
+		time.Sleep(150 * time.Millisecond)
+	}
 }
