@@ -124,14 +124,14 @@ func Default() Config {
 		}},
 		Watch: Watch{
 			NZB:   WatchKind{Enabled: true, Dir: "/host/inbox/nzb", Recursive: true},
-			Media: WatchKind{Enabled: false, Dir: "/host/inbox/media", Recursive: true},
+			Media: WatchKind{Enabled: true, Dir: "/host/inbox/media", Recursive: true},
 		},
 		Backups: (Backups{Enabled: false, Dir: "/backups", EveryMins: 0, Keep: 30, CompressGZ: true}),
 		Health: HealthConfig{
 			Enabled:   true,
 			BackupDir: "/cache/health-bak",
 			Scan: HealthScanConfig{
-				Enabled:            false,
+				Enabled:            true,
 				IntervalHours:      24,
 				ChunkEveryHours:    24,
 				MaxDurationMinutes: 180,

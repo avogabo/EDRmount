@@ -431,7 +431,7 @@
 
           <div class="grid" style="margin-top:12px">
             <div class="list" style="padding:12px">
-              <b>Health (NZB Repair)</b>
+              <b>4) Health (NZB Repair)</b>
               <div class="muted" style="margin-top:6px">Escaneo y reparación de NZBs incompletos (requiere reinicio).</div>
 
               <div class="row" style="margin-top:12px">
@@ -473,30 +473,17 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Subida (Upload)</b>
-              <div class="muted" style="margin-top:6px">Vigilancia automática + proveedor + conexión Usenet (NNTP).</div>
-              <div class="muted" style="margin-top:6px">
-                Recomendación: en <b>media</b> pon tu carpeta de <b>descargas</b>. En <b>NZB</b> monta el OneDrive (o fuente) con los NZBs del grupo EDR.
-              </div>
+              <b>1) Subidas</b>
+              <div class="muted" style="margin-top:6px">Control de subida de media: vigilancia, carpeta, proveedor y NNTP de subida.</div>
 
               <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setWatchMediaEnabled" /> Vigilancia automática (Watch folder) para media</label>
+                <label class="muted"><input type="checkbox" id="setWatchMediaEnabled" /> Vigilancia automática (activa por defecto)</label>
               </div>
               <div class="row" style="margin-top:8px">
-                <label class="muted">Ruta carpeta (Folder path)
+                <label class="muted">Ruta carpeta vigilada
                   <input id="setWatchMediaDir" style="min-width:340px; margin-left:8px" placeholder="/host/inbox/media" />
                 </label>
-                <label class="muted"><input type="checkbox" id="setWatchMediaRecursive" /> Recursivo (Recursive)</label>
-              </div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setWatchNZBEnabled" /> Vigilancia automática (Watch folder) para NZB</label>
-              </div>
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Ruta carpeta (Folder path)
-                  <input id="setWatchNZBDir" style="min-width:340px; margin-left:8px" placeholder="/host/inbox/nzb" />
-                </label>
-                <label class="muted"><input type="checkbox" id="setWatchNZBRecursive" /> Recursivo (Recursive)</label>
+                <input type="checkbox" id="setWatchMediaRecursive" checked style="display:none" />
               </div>
 
               <div class="row" style="margin-top:14px">
@@ -547,7 +534,7 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Library-auto (Filebot-ish)</b>
+              <b>3) Library auto</b>
               <div class="muted" style="margin-top:6px">Estructura de rutas virtuales que ve Plex (apunta Plex a <span class="mono">library-auto</span>).</div>
 
               <div class="row" style="margin-top:12px">
@@ -639,7 +626,7 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Plex</b>
+              <b>5) Plex</b>
               <div class="muted" style="margin-top:6px">Refresco selectivo tras Import para que Plex detecte el nuevo media.</div>
               <div class="muted" style="margin-top:6px"><b>Nota:</b> solo aplica a <b>library-auto</b> (la ruta que debe usar Plex). Manual no se refresca.</div>
 
@@ -668,8 +655,18 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Descarga (Download NNTP)</b>
-              <div class="muted" style="margin-top:6px">Configuración para streaming on-demand (leer MKV virtual → descargar segmentos).</div>
+              <b>2) Importación</b>
+              <div class="muted" style="margin-top:6px">Control del watcher NZB + datos NNTP de descarga (streaming/import).</div>
+
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setWatchNZBEnabled" /> Vigilancia automática (activa por defecto)</label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Ruta carpeta vigilada
+                  <input id="setWatchNZBDir" style="min-width:340px; margin-left:8px" placeholder="/host/inbox/nzb" />
+                </label>
+                <input type="checkbox" id="setWatchNZBRecursive" checked style="display:none" />
+              </div>
 
               <div class="row" style="margin-top:12px">
                 <label class="muted"><input type="checkbox" id="setDL_ENABLED" /> Activar descarga (Enable)</label>
@@ -707,7 +704,7 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Metadata (TMDB)</b>
+              <b>Library auto · TMDB</b>
               <div class="muted" style="margin-top:6px">Búsqueda de títulos para nombrado automático (Auto naming).</div>
 
               <div class="row" style="margin-top:12px">
@@ -729,7 +726,7 @@
             </div>
 
             <div class="list" style="padding:12px">
-              <b>Renombrado Auto (FileBot · Fase 2)</b>
+              <b>Library auto · FileBot</b>
               <div class="muted" style="margin-top:6px">Estos ajustes afectan solo al renombrado de library-auto (fase 2). La fase 1 pre-NZB usa reglas internas fijas.</div>
 
               <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
