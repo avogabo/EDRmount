@@ -176,6 +176,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		if outDir == "" {
 			outDir = "/host/inbox/nzb"
 		}
+		sourceGuess := library.GuessFromFilename(filepath.Base(p.Path))
 		normalizedInputPath := p.Path
 		if np, changed, nerr := maybeNormalizeWithFileBot(ctx, cfg, p.Path, func(line string) {
 			_ = r.jobs.AppendLog(ctx, j.ID, line)
@@ -196,7 +197,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		_ = os.MkdirAll(stagingDir, 0o755)
 		stagingNZB := filepath.Join(stagingDir, fmt.Sprintf("%s-%s.nzb", base, j.ID))
 
-		finalNZB := buildRawNZBPath(cfg, normalizedInputPath, outDir)
+		finalNZB := buildRawNZBPath(cfg, normalizedInputPath, outDir, sourceGuess.Quality)
 		if st, err := os.Stat(finalNZB); err == nil && st.Size() > 0 {
 			_ = r.jobs.AppendLog(ctx, j.ID, "nzb already exists at target path; skipping new upload to avoid duplicates: "+finalNZB)
 			_ = r.jobs.SetDone(ctx, j.ID)
@@ -671,14 +672,17 @@ func detectSeasonFromDir(path string) int {
 	return 0
 }
 
-func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
+func buildRawNZBPath(cfg config.Config, inputPath, rawRoot, qualityHint string) string {
 	if strings.TrimSpace(rawRoot) == "" {
 		rawRoot = "/host/inbox/nzb"
 	}
 	base := filepath.Base(inputPath)
 	g := library.GuessFromFilename(base)
 	// normalize quality to 1080/2160
-	q := strings.ToLower(strings.TrimSpace(g.Quality))
+	q := strings.ToLower(strings.TrimSpace(qualityHint))
+	if q == "" {
+		q = strings.ToLower(strings.TrimSpace(g.Quality))
+	}
 	quality := "1080"
 	if q == "4k" || strings.Contains(q, "2160") {
 		quality = "2160"
