@@ -239,8 +239,12 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	fs := http.FileServer(ui)
 	s.mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
+		if p == "/" || p == "/webui" || p == "/webui/" {
+			http.Redirect(w, r, "/webui/index2.html", http.StatusFound)
+			return
+		}
 		// Apply to the UI surface; avoid messing with API responses.
-		if p == "/" || p == "/index.html" || p == "/webui" || p == "/webui/" || strings.HasPrefix(p, "/webui/") {
+		if p == "/index.html" || strings.HasPrefix(p, "/webui/") {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")

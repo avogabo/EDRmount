@@ -644,8 +644,7 @@ async function loadUploadSettings() {
 
   // Plex (solo library-auto)
   const p = (cfg.plex || {});
-  document.getElementById('setPlexEnabled').checked = !!p.enabled;
-  document.getElementById('setPlexRefreshOnImport').checked = !!p.refresh_on_import;
+  document.getElementById('setPlexAutoRefresh').checked = !!(p.enabled || p.refresh_on_import);
   document.getElementById('setPlexBaseURL').value = p.base_url || '';
   document.getElementById('setPlexToken').value = p.token || '';
   document.getElementById('setPlexRoot').value = p.plex_root || '';
@@ -742,8 +741,8 @@ async function saveUploadSettings() {
 
     // Plex (solo library-auto)
     cfg.plex = cfg.plex || {};
-    cfg.plex.enabled = _bool('setPlexEnabled');
-    cfg.plex.refresh_on_import = _bool('setPlexRefreshOnImport');
+    cfg.plex.enabled = _bool('setPlexAutoRefresh');
+    cfg.plex.refresh_on_import = _bool('setPlexAutoRefresh');
     cfg.plex.base_url = _val('setPlexBaseURL');
     cfg.plex.token = _val('setPlexToken');
     cfg.plex.plex_root = _val('setPlexRoot');
