@@ -630,34 +630,19 @@
                 <span class="mono">{movies_root}</span>, <span class="mono">{series_root}</span>
               </div>
               <div class="muted" style="margin-top:6px">Tip: <span class="mono">:00</span> hace padding (01,02…).</div>
-            </div>
 
-            <div class="list" style="padding:12px">
-              <b>Library auto · TMDB</b>
-              <div class="muted" style="margin-top:6px">Búsqueda de títulos para nombrado automático (Auto naming).</div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setTMDBEnabled" /> Activar TMDB (Enable)</label>
-              </div>
-
+              <div class="row" style="margin-top:14px"><div class="muted"><b>TMDB</b></div></div>
               <div class="row" style="margin-top:8px">
+                <label class="muted"><input type="checkbox" id="setTMDBEnabled" /> Activar TMDB (Enable)</label>
                 <label class="muted">API Key
                   <input id="setTMDBApiKey" type="password" style="min-width:340px; margin-left:8px" placeholder="tmdb api key" />
                 </label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
                 <label class="muted">Idioma (Language)
                   <input id="setTMDBLanguage" style="min-width:160px; margin-left:8px" placeholder="es-ES" />
                 </label>
-                <span class="muted">Ej: es-ES / en-US</span>
               </div>
-            </div>
 
-            <div class="list" style="padding:12px">
-              <b>Library auto · FileBot</b>
-              <div class="muted" style="margin-top:6px">Estos ajustes afectan solo al renombrado de library-auto (fase 2). La fase 1 pre-NZB usa reglas internas fijas.</div>
-
+              <div class="row" style="margin-top:14px"><div class="muted"><b>FileBot</b> (auto rename)</div></div>
               <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
                 <label class="muted">License path
                   <input id="setFileBotLicensePath" style="min-width:360px; margin-left:8px" placeholder="/config/filebot/license.psm" />
@@ -669,13 +654,62 @@
                   <input id="setFileBotLanguage" style="min-width:120px; margin-left:8px" placeholder="es" />
                 </label>
               </div>
-
               <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
                 <label class="muted">Formato película
                   <input id="setFileBotMovieFormat" style="min-width:340px; margin-left:8px" placeholder="{n} ({y})" />
                 </label>
                 <label class="muted">Formato serie
                   <input id="setFileBotSeriesFormat" style="min-width:340px; margin-left:8px" placeholder="{n} - {s00e00} - {t}" />
+                </label>
+              </div>
+
+              <div class="muted" style="margin-top:8px">Leyenda: estos ajustes afectan al renombrado de <b>library-auto</b> (fase 2). La fase 1 pre-NZB es fija e interna.</div>
+            </div>
+
+            <div class="list" style="padding:12px">
+              <b>Health (NZB Repair)</b>
+              <div class="muted" style="margin-top:6px">Configuración de escaneo/reparación automática.</div>
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setHealthEnabled" /> Activar health</label>
+                <label class="muted"><input type="checkbox" id="setHealthScanEnabled" /> Escaneo automático</label>
+                <label class="muted"><input type="checkbox" id="setHealthAutoRepair" /> Reparación automática</label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Presupuesto diario (min)
+                  <input id="setHealthMaxDurationMins" type="number" style="width:110px; margin-left:8px" placeholder="180" />
+                </label>
+                <label class="muted">Reanudar cada (h)
+                  <input id="setHealthChunkEveryHours" type="number" style="width:110px; margin-left:8px" placeholder="24" />
+                </label>
+                <label class="muted">Intervalo completo (h)
+                  <input id="setHealthIntervalHours" type="number" style="width:110px; margin-left:8px" placeholder="24" />
+                </label>
+                <label class="muted">Lock TTL (h)
+                  <input id="setHealthLockTTLHours" type="number" style="width:110px; margin-left:8px" placeholder="6" />
+                </label>
+              </div>
+            </div>
+
+            <div class="list" style="padding:12px">
+              <b>Plex</b>
+              <div class="muted" style="margin-top:6px">Refresco selectivo tras importar en library-auto.</div>
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setPlexEnabled" /> Activar Plex refresh</label>
+                <label class="muted"><input type="checkbox" id="setPlexRefreshOnImport" /> Refrescar al importar</label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">URL
+                  <input id="setPlexBaseURL" style="min-width:340px; margin-left:8px" placeholder="http://192.168.1.10:32400" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Token
+                  <input id="setPlexToken" type="password" style="min-width:340px; margin-left:8px" placeholder="X-Plex-Token" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Plex root
+                  <input id="setPlexRoot" style="min-width:340px; margin-left:8px" placeholder="/mnt/media/library-auto" />
                 </label>
               </div>
             </div>
@@ -729,75 +763,3 @@
   <script src="/webui/upload2.js"></script>
 </body>
 </html>
-<div class="list" style="padding:12px">
-              <b>Health (NZB Repair)</b>
-              <div class="muted" style="margin-top:6px">Escaneo y reparación de NZBs incompletos (requiere reinicio).</div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setHealthEnabled" /> Activar health (Enable)</label>
-                <span class="muted">(Backups locales van a <span class="mono">/cache/health-bak</span>)</span>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted"><input type="checkbox" id="setHealthScanEnabled" /> Escaneo automático (Auto scan)</label>
-                <label class="muted"><input type="checkbox" id="setHealthAutoRepair" /> Reparación automática (Auto repair)</label>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Presupuesto por día (Budget)
-                  <input id="setHealthMaxDurationMins" type="number" min="5" step="5" style="width:110px; margin-left:8px" placeholder="180" />
-                  <span class="muted">min</span>
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Reanudar chunk cada (Resume)
-                  <input id="setHealthChunkEveryHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="24" />
-                  <span class="muted">h</span>
-                </label>
-
-                <label class="muted">Tras run completo esperar (After complete)
-                  <input id="setHealthIntervalHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="24" />
-                  <span class="muted">h</span>
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <label class="muted">Lock TTL
-                  <input id="setHealthLockTTLHours" type="number" min="1" step="1" style="width:90px; margin-left:8px" placeholder="6" />
-                  <span class="muted">h</span>
-                </label>
-                <span class="muted">(crea <span class="mono">.health.lock</span> al reparar para evitar doble reparación)</span>
-              </div>
-            </div>
-
-            <div class="list" style="padding:12px">
-              <b>Plex</b>
-              <div class="muted" style="margin-top:6px">Refresco selectivo tras Import para que Plex detecte el nuevo media.</div>
-              <div class="muted" style="margin-top:6px"><b>Nota:</b> solo aplica a <b>library-auto</b> (la ruta que debe usar Plex). Manual no se refresca.</div>
-
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setPlexEnabled" /> Activar Plex refresh (Enable)</label>
-                <label class="muted" style="margin-left:14px"><input type="checkbox" id="setPlexRefreshOnImport" /> Refrescar al importar (Refresh on Import)</label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">URL
-                  <input id="setPlexBaseURL" style="min-width:340px; margin-left:8px" placeholder="http://192.168.1.10:32400" />
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Token
-                  <input id="setPlexToken" type="password" style="min-width:340px; margin-left:8px" placeholder="X-Plex-Token" />
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Plex root (ruta en el servidor Plex)
-                  <input id="setPlexRoot" style="min-width:340px; margin-left:8px" placeholder="/mnt/media/library-auto" />
-                </label>
-              </div>
-            </div>
-
-            
