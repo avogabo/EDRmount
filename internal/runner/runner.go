@@ -241,12 +241,10 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			// We still generate parity into /cache (parStagingDir), so we avoid copying the large media file.
 			parBase := filepath.Join(parStagingDir, base)
 			inputPath := p.Path
-			inputDir := filepath.Dir(inputPath)
 			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent)}
 
 			if st, err := os.Stat(inputPath); err == nil && st.IsDir() {
 				// par2 cannot create from a directory path directly; pass a file list relative to base path.
-				inputDir = inputPath
 				files := make([]string, 0, 64)
 				_ = filepath.WalkDir(inputPath, func(fp string, d os.DirEntry, err error) error {
 					if err != nil || d == nil {
@@ -262,24 +260,20 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 					if d.IsDir() {
 						return nil
 					}
-					rel, rerr := filepath.Rel(inputPath, fp)
-					if rerr != nil {
-						return nil
-					}
-					files = append(files, rel)
+					files = append(files, fp)
 					return nil
 				})
 				if len(files) == 0 {
 					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2 skipped: no files found in directory input")
 					parEnabled = false
 				} else {
-					args = append(args, "-B"+inputDir, parBase+".par2")
+					args = append(args, parBase+".par2")
 					args = append(args, files...)
 				}
 			} else {
 				// Use par2cmdline-compatible interface for single files.
 				// par2 enforces a basepath; set it to the directory containing the source file.
-				args = append(args, "-B"+inputDir, parBase+".par2", inputPath)
+				args = append(args, parBase+".par2", inputPath)
 			}
 			if parEnabled {
 				_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
