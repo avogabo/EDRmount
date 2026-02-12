@@ -29,6 +29,11 @@ func maybeNormalizeWithFileBot(ctx context.Context, cfg config.Config, inputPath
 		return inputPath, false, fmt.Errorf("binary not found: %s", bin)
 	}
 
+	if st, err := os.Stat(inputPath); err == nil && st.IsDir() {
+		// For folders (season packs / full series), keep deterministic naming from structure in runner.
+		return inputPath, false, nil
+	}
+
 	g := library.GuessFromFilename(filepath.Base(inputPath))
 	// Phase 1 rename is fixed/internal by design.
 	format := "{n} ({y})"

@@ -21,6 +21,8 @@ import (
 )
 
 var rePercent = regexp.MustCompile(`\b(\d{1,3})%\b`)
+var reSeasonNum = regexp.MustCompile(`(?i)(?:season|temporada|s)\s*0*(\d{1,2})`)
+var reEpisodeNum = regexp.MustCompile(`(?i)\b(?:s\d{1,2}e\d{1,2}|\d{1,2}x\d{1,2})\b`)
 
 type Runner struct {
 	jobs *jobs.Store
@@ -562,6 +564,64 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+func detectSeasonFromName(name string) int {
+	m := reSeasonNum.FindStringSubmatch(name)
+	if len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
+func stripSeasonFromName(name string) string {
+	clean := reSeasonNum.ReplaceAllString(name, "")
+	clean = strings.ReplaceAll(clean, "()", "")
+	clean = strings.Join(strings.Fields(clean), " ")
+	clean = strings.Trim(clean, " -_.")
+	return clean
+}
+
+func detectSeasonFromDir(path string) int {
+	base := filepath.Base(path)
+	if n := detectSeasonFromName(base); n > 0 {
+		return n
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return 0
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if n := detectSeasonFromName(e.Name()); n > 0 {
+				return n
+			}
+			continue
+		}
+		if n := detectSeasonFromName(e.Name()); n > 0 {
+			return n
+		}
+		if m := reEpisodeNum.FindString(e.Name()); m != "" {
+			if strings.Contains(strings.ToLower(m), "x") {
+				parts := strings.Split(strings.ToLower(m), "x")
+				if len(parts) == 2 {
+					if n, err := strconv.Atoi(parts[0]); err == nil && n > 0 {
+						return n
+					}
+				}
+			} else if strings.HasPrefix(strings.ToLower(m), "s") {
+				m = strings.TrimPrefix(strings.ToLower(m), "s")
+				if idx := strings.Index(m, "e"); idx > 0 {
+					if n, err := strconv.Atoi(m[:idx]); err == nil && n > 0 {
+						return n
+					}
+				}
+			}
+		}
+	}
+	return 0
+}
+
 func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 	if strings.TrimSpace(rawRoot) == "" {
 		rawRoot = "/host/inbox/nzb"
@@ -605,7 +665,19 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 	}
 
 	if g.IsSeries {
-		seriesName := safe(g.Title)
+		seriesTitle := strings.TrimSpace(g.Title)
+		if isDir {
+			baseName := filepath.Base(inputPath)
+			seriesTitle = strings.TrimSpace(stripSeasonFromName(baseName))
+			if seriesTitle == "" {
+				parent := filepath.Base(filepath.Dir(inputPath))
+				seriesTitle = strings.TrimSpace(stripSeasonFromName(parent))
+			}
+		}
+		if seriesTitle == "" {
+			seriesTitle = g.Title
+		}
+		seriesName := safe(seriesTitle)
 		yearPart := ""
 		if g.Year > 0 {
 			yearPart = fmt.Sprintf(" (%d)", g.Year)
@@ -614,16 +686,22 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 
 		fileName := ""
 		if isDir {
-			// e.g. "Perdidos (2004) Temporada 1.nzb"
-			fileName = safe(filepath.Base(inputPath)) + ".nzb"
+			season := detectSeasonFromDir(inputPath)
+			if season <= 0 {
+				season = detectSeasonFromName(filepath.Base(inputPath))
+			}
+			if season > 0 {
+				fileName = fmt.Sprintf("%s%s - Temporada %d.nzb", safe(seriesName), yearPart, season)
+			} else {
+				fileName = fmt.Sprintf("%s%s.nzb", safe(seriesName), yearPart)
+			}
 		} else if g.Season > 0 && g.Episode > 0 {
-			fileName = fmt.Sprintf("%s %02dx%02d.nzb", safe(seriesName), g.Season, g.Episode)
+			fileName = fmt.Sprintf("%s%s %02dx%02d.nzb", safe(seriesName), yearPart, g.Season, g.Episode)
 		} else {
-			fileName = safe(seriesName) + ".nzb"
+			fileName = fmt.Sprintf("%s%s.nzb", safe(seriesName), yearPart)
 		}
 
-		// NZB layout for series: SERIES/A/.../Perdidos (2004)/<file>.nzb
-		// (If title starts with non-letter, InitialFolder already returns "#").
+		// NZB layout for series: SERIES/A/.../Serie (Año)/<file>.nzb
 		rel := filepath.Join(l.SeriesRoot, initial, seriesFolder, fileName)
 		if cfg.Library.UppercaseFolders {
 			rel = library.ApplyUppercaseFolders(rel)
