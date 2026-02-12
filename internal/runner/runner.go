@@ -36,7 +36,7 @@ type Runner struct {
 }
 
 func New(j *jobs.Store) *Runner {
-	return &Runner{jobs: j, UploadConcurrency: 2, PollInterval: 1 * time.Second, Mode: "stub", NgPostPath: "/usr/local/bin/ngpost", NyuuPath: "/usr/local/bin/nyuu"}
+	return &Runner{jobs: j, UploadConcurrency: 1, PollInterval: 1 * time.Second, Mode: "stub", NgPostPath: "/usr/local/bin/ngpost", NyuuPath: "/usr/local/bin/nyuu"}
 }
 
 func (r *Runner) Run(ctx context.Context) {
@@ -141,6 +141,33 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		provider := strings.ToLower(strings.TrimSpace(cfg.Upload.Provider))
 		if provider == "" {
 			provider = "ngpost"
+		}
+
+		// If upload path is a directory with subdirectories, treat each subdirectory as an independent season pack.
+		if st, err := os.Stat(p.Path); err == nil && st.IsDir() {
+			entries, _ := os.ReadDir(p.Path)
+			hasSubDir := false
+			for _, e := range entries {
+				if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+					hasSubDir = true
+					break
+				}
+			}
+			if hasSubDir {
+				enq := 0
+				for _, e := range entries {
+					if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+						continue
+					}
+					sub := filepath.Join(p.Path, e.Name())
+					if _, err := r.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": sub}); err == nil {
+						enq++
+					}
+				}
+				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("directory pack detected; enqueued %d season subfolder job(s)", enq))
+				_ = r.jobs.SetDone(ctx, j.ID)
+				return
+			}
 		}
 
 		outDir := ng.OutputDir
@@ -568,10 +595,13 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 		initial = "#"
 	}
 
-	// If inputPath is a directory (season pack), use its basename as NZB filename.
+	// If inputPath is a directory, treat it as series content (season pack or series folder).
 	isDir := false
 	if st, err := os.Stat(inputPath); err == nil {
 		isDir = st.IsDir()
+	}
+	if isDir {
+		g.IsSeries = true
 	}
 
 	if g.IsSeries {
