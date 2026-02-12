@@ -377,69 +377,77 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				}, r.NyuuPath, args...)
 				if err != nil {
 					msg := err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				// Move staging NZB into the watched NZB inbox only after the uploader has finished.
-				emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
-				emitProgress(99)
-				_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
-				if err != nil {
-					msg := err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				emitProgress(100)
-
-				// Persist PAR2 files (keep) if enabled.
-				if parKeep && parDir != "" {
-					relDir, err := filepath.Rel(outDir, filepath.Dir(finalNZB))
-					if err != nil {
-						relDir = ""
+					if strings.Contains(strings.ToLower(msg), "illegal instruction") {
+						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: nyuu crashed with illegal instruction; retrying with ngpost")
+						provider = "ngpost"
+					} else {
+						_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+						_ = r.jobs.SetFailed(ctx, j.ID, msg)
+						return
 					}
-					keepDir := filepath.Join(strings.TrimSpace(cfg.Upload.Par.Dir), relDir)
-					_ = os.MkdirAll(keepDir, 0o755)
-					entries, _ := os.ReadDir(parDir)
-					moved := 0
-					for _, e := range entries {
-						name := e.Name()
-						if !strings.HasSuffix(strings.ToLower(name), ".par2") {
-							continue
+				}
+				if provider == "nyuu" {
+					// Move staging NZB into the watched NZB inbox only after the uploader has finished.
+					emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
+					emitProgress(99)
+					_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
+					if err != nil {
+						msg := err.Error()
+						_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
+						_ = r.jobs.SetFailed(ctx, j.ID, msg)
+						return
+					}
+					emitProgress(100)
+
+					// Persist PAR2 files (keep) if enabled.
+					if parKeep && parDir != "" {
+						relDir, err := filepath.Rel(outDir, filepath.Dir(finalNZB))
+						if err != nil {
+							relDir = ""
 						}
-						src := filepath.Join(parDir, name)
-						dst := filepath.Join(keepDir, name)
-						_ = os.Remove(dst)
-						if err := os.Rename(src, dst); err == nil {
-							moved++
-							continue
-						}
-						// Cross-filesystem fallback: copy then remove.
-						if in, err := os.Open(src); err == nil {
-							defer in.Close()
-							tmp := dst + ".tmp"
-							_ = os.Remove(tmp)
-							if out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
-								_, _ = io.Copy(out, in)
-								_ = out.Close()
-								_ = os.Rename(tmp, dst)
-								_ = os.Remove(src)
+						keepDir := filepath.Join(strings.TrimSpace(cfg.Upload.Par.Dir), relDir)
+						_ = os.MkdirAll(keepDir, 0o755)
+						entries, _ := os.ReadDir(parDir)
+						moved := 0
+						for _, e := range entries {
+							name := e.Name()
+							if !strings.HasSuffix(strings.ToLower(name), ".par2") {
+								continue
+							}
+							src := filepath.Join(parDir, name)
+							dst := filepath.Join(keepDir, name)
+							_ = os.Remove(dst)
+							if err := os.Rename(src, dst); err == nil {
 								moved++
+								continue
+							}
+							// Cross-filesystem fallback: copy then remove.
+							if in, err := os.Open(src); err == nil {
+								defer in.Close()
+								tmp := dst + ".tmp"
+								_ = os.Remove(tmp)
+								if out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
+									_, _ = io.Copy(out, in)
+									_ = out.Close()
+									_ = os.Rename(tmp, dst)
+									_ = os.Remove(src)
+									moved++
+								}
 							}
 						}
+						_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: kept %d file(s) in %s", moved, keepDir))
 					}
-					_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: kept %d file(s) in %s", moved, keepDir))
-				}
 
-				_ = r.jobs.SetDone(ctx, j.ID)
-				// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
-				return
+					_ = r.jobs.SetDone(ctx, j.ID)
+					// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
+					return
+				}
 			}
-			if ng.Enabled {
+			if ng.Enabled && provider == "nyuu" {
 				_ = r.jobs.AppendLog(ctx, j.ID, "nyuu selected but missing config fields (need host/user/pass/groups)")
 			}
-		} else {
+		}
+		if provider != "nyuu" {
 			// Default: ngpost
 			if ng.Enabled && ng.Host != "" && ng.User != "" && ng.Pass != "" && ng.Groups != "" {
 				args := []string{"-i", p.Path, "-o", stagingNZB, "-h", ng.Host, "-P", fmt.Sprintf("%d", ng.Port)}
