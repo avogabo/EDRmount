@@ -242,11 +242,48 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			parBase := filepath.Join(parStagingDir, base)
 			inputPath := p.Path
 			inputDir := filepath.Dir(inputPath)
-			// Use par2cmdline-compatible interface.
-			// par2 enforces a basepath; set it to the directory containing the source file so absolute
-			// /host/... paths are not ignored when outputting parity under /cache.
-			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), "-B" + inputDir, parBase + ".par2", "--", inputPath}
-			_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
+			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent)}
+
+			if st, err := os.Stat(inputPath); err == nil && st.IsDir() {
+				// par2 cannot create from a directory path directly; pass a file list relative to base path.
+				inputDir = inputPath
+				files := make([]string, 0, 64)
+				_ = filepath.WalkDir(inputPath, func(fp string, d os.DirEntry, err error) error {
+					if err != nil || d == nil {
+						return nil
+					}
+					name := d.Name()
+					if strings.HasPrefix(name, ".") {
+						if d.IsDir() {
+							return filepath.SkipDir
+						}
+						return nil
+					}
+					if d.IsDir() {
+						return nil
+					}
+					rel, rerr := filepath.Rel(inputPath, fp)
+					if rerr != nil {
+						return nil
+					}
+					files = append(files, rel)
+					return nil
+				})
+				if len(files) == 0 {
+					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2 skipped: no files found in directory input")
+					parEnabled = false
+				} else {
+					args = append(args, "-B"+inputDir, parBase+".par2", "--")
+					args = append(args, files...)
+				}
+			} else {
+				// Use par2cmdline-compatible interface for single files.
+				// par2 enforces a basepath; set it to the directory containing the source file.
+				args = append(args, "-B"+inputDir, parBase+".par2", "--", inputPath)
+			}
+			if parEnabled {
+				_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
+			}
 			// If par2create does not emit percentages, keep UI alive by ticking progress
 			// (avoid looking stuck at 5% for large files).
 			parStart := time.Now()
@@ -282,19 +319,24 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				}
 			}()
 
-			err := runCommand(ctx, func(line string) {
-				clean := strings.TrimSpace(line)
-				_ = r.jobs.AppendLog(ctx, j.ID, clean)
-				if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-					if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-						// Map PAR stage to early progress window (5..20)
-						p2 := 5 + (n * 15 / 100)
-						emitProgress(p2)
+			err := error(nil)
+			if parEnabled {
+				err = runCommand(ctx, func(line string) {
+					clean := strings.TrimSpace(line)
+					_ = r.jobs.AppendLog(ctx, j.ID, clean)
+					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+							// Map PAR stage to early progress window (5..20)
+							p2 := 5 + (n * 15 / 100)
+							emitProgress(p2)
+						}
 					}
-				}
-			}, "par2", args...)
+				}, "par2", args...)
+			}
 			stopTick()
-			if err != nil {
+			if !parEnabled {
+				// already logged
+			} else if err != nil {
 				_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2create failed (continuing without PAR): "+err.Error())
 				parEnabled = false
 			} else {
