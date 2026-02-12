@@ -175,7 +175,7 @@ func Load(path string) (Config, error) {
 	cfg.Metadata = cfg.Metadata.withDefaults()
 	cfg.Plex = cfg.Plex.withDefaults()
 	if cfg.Runner.Mode == "" {
-		cfg.Runner.Mode = "stub"
+		cfg.Runner.Mode = "exec"
 	}
 	if !runnerEnabledPresent {
 		cfg.Runner.Enabled = true
