@@ -352,8 +352,6 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				if ng.Groups != "" {
 					args = append(args, "-g", ng.Groups)
 				}
-				// Obfuscation fork feature
-				args = append(args, "--obfuscate-articles")
 				// NZB output (staging)
 				args = append(args, "-o", stagingNZB, "-O")
 				// Auth

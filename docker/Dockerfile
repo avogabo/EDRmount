@@ -92,7 +92,7 @@ RUN if [ "$INSTALL_NYUU" = "1" ]; then \
       sleep 5; \
     done; \
     rm -rf /var/lib/apt/lists/*; \
-    npm install -g --production --unsafe-perm git+https://github.com/Antidote2151/Nyuu-Obfuscation.git; \
+    npm install -g --production --unsafe-perm nyuu; \
   else \
     echo "Skipping nyuu install (INSTALL_NYUU=0)"; \
   fi
