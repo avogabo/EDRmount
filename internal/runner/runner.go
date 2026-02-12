@@ -352,11 +352,10 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				if ng.Groups != "" {
 					args = append(args, "-g", ng.Groups)
 				}
-				// Obfuscation (nyuu native): randomize headers/filenames/article subjects
+				// Obfuscation (safe for pipeline): randomize article metadata only.
+				// Keep filename/yenc-name stable so downstream import/mount keeps working.
 				args = append(args,
 					"--subject", "${rand(40)} yEnc ({part}/{parts})",
-					"--filename", "${rand(24)}",
-					"--yenc-name", "${rand(24)}",
 					"--message-id", "${rand(24)}-${rand(12)}@nyuu",
 					"--from", "poster <poster@localhost>",
 				)
