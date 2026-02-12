@@ -15,7 +15,7 @@ RUN go build -ldflags "-X github.com/gaby/EDRmount/internal/version.Version=${VE
 RUN go install github.com/javi11/nzb-repair@v0.0.3
 
 FROM ubuntu:jammy AS runtime
-RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 openjdk-17-jre-headless xz-utils mediainfo libmediainfo0v5 libmms0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 openjdk-17-jre-headless xz-utils mediainfo libmediainfo0v5 libmms0 locales && rm -rf /var/lib/apt/lists/*
 
 # ngpost's bundled Qt expects OpenSSL 1.1 (libcrypto.so.1.1/libssl.so.1.1).
 # Ubuntu jammy ships OpenSSL 3, so we temporarily add focal to install libssl1.1.
@@ -41,8 +41,9 @@ RUN make install DESTDIR=/out
 
 FROM runtime
 
-ENV LANG=C.UTF-8
-ENV LC_ALL=C.UTF-8
+RUN locale-gen en_US.UTF-8 || true
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 COPY --from=build /out/edrmount /usr/local/bin/edrmount
 COPY --from=build /go/bin/nzb-repair /usr/local/bin/nzb-repair

@@ -48,9 +48,12 @@ func maybeNormalizeWithFileBot(ctx context.Context, cfg config.Config, inputPath
 	}
 	// Fixed/internal for phase 1
 	db := "TheMovieDB"
+	if g.IsSeries {
+		db = "TheMovieDB::TV"
+	}
 	lang := "es"
 
-	args := []string{"-rename", inputPath, "--db", db, "--lang", lang, "--format", format, "--action", action}
+	args := []string{"-rename", inputPath, "--db", db, "--lang", lang, "--format", format, "--action", action, "--non-strict"}
 	var lines []string
 	err := runCommand(ctx, func(line string) {
 		lines = append(lines, line)
