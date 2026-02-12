@@ -355,6 +355,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				// Keep filename/yenc-name stable so downstream import/mount keeps working.
 				args = append(args,
 					"--subject", "${rand(40)} yEnc ({part}/{parts})",
+					"--nzb-subject", `"{filename}" yEnc ({part}/{parts})`,
 					"--message-id", "${rand(24)}-${rand(12)}@nyuu",
 					"--from", "poster <poster@example.com>",
 				)
