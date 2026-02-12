@@ -273,13 +273,13 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2 skipped: no files found in directory input")
 					parEnabled = false
 				} else {
-					args = append(args, "-B"+inputDir, parBase+".par2", "--")
+					args = append(args, "-B"+inputDir, parBase+".par2")
 					args = append(args, files...)
 				}
 			} else {
 				// Use par2cmdline-compatible interface for single files.
 				// par2 enforces a basepath; set it to the directory containing the source file.
-				args = append(args, "-B"+inputDir, parBase+".par2", "--", inputPath)
+				args = append(args, "-B"+inputDir, parBase+".par2", inputPath)
 			}
 			if parEnabled {
 				_ = r.jobs.AppendLog(ctx, j.ID, "par2: par2 "+strings.Join(args, " "))
