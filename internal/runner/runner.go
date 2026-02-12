@@ -728,7 +728,9 @@ func buildRawNZBPath(cfg config.Config, inputPath, rawRoot string) string {
 		}
 		yearPart := ""
 		if year > 0 {
-			yearPart = fmt.Sprintf(" (%d)", year)
+			if !strings.Contains(strings.ToLower(seriesName), fmt.Sprintf("(%d)", year)) {
+				yearPart = fmt.Sprintf(" (%d)", year)
+			}
 		}
 		initial := library.InitialFolder(seriesName)
 		if strings.TrimSpace(initial) == "" || len([]rune(initial)) != 1 || (initial[0] < 'A' || initial[0] > 'Z') {
