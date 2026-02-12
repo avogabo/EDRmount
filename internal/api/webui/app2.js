@@ -1049,6 +1049,14 @@ async function enqueueSelectedImport() {
 window.addEventListener('DOMContentLoaded', () => {
   (async () => {
     await initLibraryRoots();
+    try {
+      const live = await apiGet('/live');
+      const v = (live && live.version) ? String(live.version).trim() : '';
+      if (v) {
+        const pill = document.getElementById('buildVersionPill');
+        if (pill) pill.textContent = `v${v}`;
+      }
+    } catch (_) {}
 
     // Nav
     for (const item of document.querySelectorAll('.navItem')) {
