@@ -168,6 +168,11 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		stagingNZB := filepath.Join(stagingDir, fmt.Sprintf("%s-%s.nzb", base, j.ID))
 
 		finalNZB := buildRawNZBPath(cfg, normalizedInputPath, outDir)
+		if st, err := os.Stat(finalNZB); err == nil && st.Size() > 0 {
+			_ = r.jobs.AppendLog(ctx, j.ID, "nzb already exists at target path; skipping new upload to avoid duplicates: "+finalNZB)
+			_ = r.jobs.SetDone(ctx, j.ID)
+			return
+		}
 
 		lastProgress := -1
 		emitProgress := func(p int) {

@@ -116,6 +116,15 @@ func (r *Resolver) ResolveTV(ctx context.Context, title string, year int) (tmdb.
 		}
 	}
 	if len(res) == 0 {
+		for _, q := range fallbackTVQueries(baseTitle) {
+			out, err := r.c.SearchTV(cctx, q, year)
+			if err == nil && len(out) > 0 {
+				res = out
+				break
+			}
+		}
+	}
+	if len(res) == 0 {
 		return tmdb.TVDetails{}, false
 	}
 
@@ -187,6 +196,35 @@ func sanitizeTVQuery(in string, year int) string {
 		return sanitizeQuery(in, year)
 	}
 	return s
+}
+
+func fallbackTVQueries(title string) []string {
+	low := strings.ToLower(strings.TrimSpace(title))
+	if low == "" {
+		return nil
+	}
+	parts := strings.Fields(regexp.MustCompile(`[^a-z0-9 ]+`).ReplaceAllString(low, " "))
+	stop := map[string]bool{
+		"the": true, "and": true, "with": true, "from": true, "for": true,
+		"el": true, "la": true, "los": true, "las": true, "de": true, "del": true, "en": true, "y": true,
+		"desmintiendo": true, "confinamiento": true, "american": true, "lockdown": true,
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, 3)
+	for _, p := range parts {
+		if len(p) < 5 || stop[p] {
+			continue
+		}
+		q := strings.ToUpper(p[:1]) + p[1:]
+		if !seen[q] {
+			seen[q] = true
+			out = append(out, q)
+		}
+		if len(out) >= 3 {
+			break
+		}
+	}
+	return out
 }
 
 func sanitizeQuery(in string, year int) string {
