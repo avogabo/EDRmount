@@ -50,6 +50,9 @@ func (r *Runner) runHealthScan(ctx context.Context, j *jobs.Job) {
 	if cursor.Valid {
 		cursorPath = cursor.String
 	}
+	if cursorPath == "" {
+		_, _ = db.ExecContext(ctx, `UPDATE health_scan_state SET run_started_at=? WHERE id=1`, time.Now().Unix())
+	}
 
 	// List all NZBs (deterministic order)
 	paths := make([]string, 0, 1024)

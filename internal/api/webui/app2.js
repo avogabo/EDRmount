@@ -439,39 +439,80 @@ async function restartNow() {
 async function refreshHealthScan() {
   const box = document.getElementById('healthList');
   const st = document.getElementById('healthStatus');
+  const summary = document.getElementById('healthSummary');
   const set = (t) => { if (st) st.textContent = t || ''; };
   if (!box) return;
 
+  const fmtUnix = (u) => {
+    const n = Number(u || 0);
+    if (!Number.isFinite(n) || n <= 0) return '—';
+    return fmtTime(new Date(n * 1000).toISOString());
+  };
+  const statusLabel = (e) => {
+    if (e.last_repair_outcome === 'done') return 'repaired ✅';
+    if (e.last_repair_outcome === 'failed') return 'repair-failed ❌';
+    if (e.status) return e.status;
+    return 'unknown';
+  };
+
   set('Cargando… (Loading)');
   box.innerHTML = '';
+  if (summary) summary.textContent = '';
   try {
     const data = await apiGet('/api/v1/health/scan');
     const entries = (data && data.entries) ? data.entries : [];
+    const sum = (data && data.summary) ? data.summary : {};
 
+    if (summary) {
+      summary.textContent = `Actual: ${sum.checked_in_current_run || 0}/${sum.total || entries.length} comprobados · Última completa: ${fmtUnix(sum.last_full_run_at)} · Inicio ciclo actual: ${fmtUnix(sum.current_run_started_at)}`;
+    }
+
+    const byDir = new Map();
     for (const e of entries) {
-      const row = el('div', { class: 'listRow' });
-      row.style.gridTemplateColumns = '1fr 110px 190px 120px';
+      const rel = String(e.rel_path || '').replaceAll('\\', '/');
+      const i = rel.lastIndexOf('/');
+      const dir = i >= 0 ? rel.slice(0, i) : '.';
+      if (!byDir.has(dir)) byDir.set(dir, []);
+      byDir.get(dir).push(e);
+    }
 
-      row.appendChild(el('div', { class: 'mono', text: e.path }));
-      row.appendChild(el('div', { class: 'mono muted', text: fmtSize(e.size) }));
-      row.appendChild(el('div', { class: 'mono muted', text: fmtTime(e.mod_time) }));
+    const dirs = Array.from(byDir.keys()).sort((a, b) => a.localeCompare(b));
+    for (const dir of dirs) {
+      const head = el('div', { class: 'listRow' });
+      head.style.gridTemplateColumns = '1fr';
+      head.style.background = '#151515';
+      head.appendChild(el('div', { class: 'mono', text: `📁 ${dir}` }));
+      box.appendChild(head);
 
-      const btn = el('button', { class: 'btn', type: 'button', text: 'Reparar (Repair)' });
-      btn.onclick = async (ev) => {
-        ev.stopPropagation();
-        set('Encolando reparación… (Queueing)');
-        try {
-          await apiPostJson('/api/v1/jobs/enqueue/health-repair', { path: e.path });
-          set('OK: job encolado (queued). Mira Logs para el detalle.');
-        } catch (err) {
-          set('Error: ' + String(err));
-        }
-      };
-      const cell = el('div');
-      cell.appendChild(btn);
-      row.appendChild(cell);
+      const items = byDir.get(dir).sort((a, b) => String(a.rel_path || '').localeCompare(String(b.rel_path || '')));
+      for (const e of items) {
+        const row = el('div', { class: 'listRow' });
+        row.style.gridTemplateColumns = '1fr 120px 160px 160px 120px 120px';
 
-      box.appendChild(row);
+        const name = String(e.rel_path || e.path || '').split('/').pop() || e.path;
+        row.appendChild(el('div', { class: 'mono', text: `${name} · ${statusLabel(e)}` }));
+        row.appendChild(el('div', { class: 'mono muted', text: fmtSize(e.size) }));
+        row.appendChild(el('div', { class: 'mono muted', text: fmtTime(e.mod_time) }));
+        row.appendChild(el('div', { class: 'mono muted', text: fmtUnix(e.last_checked_at) }));
+        row.appendChild(el('div', { class: 'mono muted', text: fmtUnix(e.last_repaired_at) }));
+
+        const btn = el('button', { class: 'btn', type: 'button', text: 'Reparar' });
+        btn.onclick = async (ev) => {
+          ev.stopPropagation();
+          set('Encolando reparación… (Queueing)');
+          try {
+            await apiPostJson('/api/v1/jobs/enqueue/health-repair', { path: e.path });
+            set('OK: job encolado (queued).');
+          } catch (err) {
+            set('Error: ' + String(err));
+          }
+        };
+        const cell = el('div');
+        cell.appendChild(btn);
+        row.appendChild(cell);
+
+        box.appendChild(row);
+      }
     }
 
     set(`OK (${entries.length})`);

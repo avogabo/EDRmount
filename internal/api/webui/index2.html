@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.36</span>
+        <span class="pill" id="buildVersionPill">v1.37</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -395,10 +395,13 @@
 
           <div class="grid" style="margin-top:12px">
             <div class="list">
-              <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 120px;">
-                <div>NZB (path)</div>
+              <div id="healthSummary" class="muted" style="padding:10px 12px;border-bottom:1px solid #262626"></div>
+              <div class="listHeader" style="grid-template-columns: 1fr 120px 160px 160px 120px 120px;">
+                <div>NZB (árbol)</div>
                 <div class="mono">Size</div>
                 <div class="mono">ModTime</div>
+                <div class="mono">Última comprob.</div>
+                <div class="mono">Última reparación</div>
                 <div>Acción</div>
               </div>
               <div id="healthList"></div>

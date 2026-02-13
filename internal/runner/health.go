@@ -25,7 +25,7 @@ type healthRepairPayload struct {
 	Path string `json:"path"`
 }
 
-func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.Config, payload healthRepairPayload) error {
+func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.Config, payload healthRepairPayload) (retErr error) {
 	if !cfg.Health.Enabled {
 		return errors.New("health repair: disabled by config (health.enabled=false)")
 	}
@@ -34,6 +34,15 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if nzbPath == "" {
 		return errors.New("health repair: payload.path required")
 	}
+	_ = r.upsertHealthState(ctx, nzbPath, "repairing", time.Now().Unix(), 0, "", jobID)
+	defer func() {
+		if retErr != nil {
+			_ = r.upsertHealthState(ctx, nzbPath, "error", 0, 0, retErr.Error(), jobID)
+			return
+		}
+		now := time.Now().Unix()
+		_ = r.upsertHealthState(ctx, nzbPath, "repaired", now, now, "", jobID)
+	}()
 
 	// Cross-node coordination: lock file next to NZB (sidecar), so shared RAW trees don't double-repair.
 	lockPath := nzbPath + ".health.lock"
@@ -340,6 +349,22 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	}
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: repaired OK (backup=%s)", bakPath))
 	return nil
+}
+
+func (r *Runner) upsertHealthState(ctx context.Context, path, status string, lastCheckedAt, lastRepairedAt int64, lastError, repairJobID string) error {
+	if r.jobs == nil || r.jobs.DB() == nil || r.jobs.DB().SQL == nil {
+		return errors.New("jobs db not configured")
+	}
+	_, err := r.jobs.DB().SQL.ExecContext(ctx, `INSERT INTO health_nzb_state(path,status,last_checked_at,last_error,last_repair_job_id,last_repaired_at)
+		VALUES(?,?,?,?,?,?)
+		ON CONFLICT(path) DO UPDATE SET
+		status=excluded.status,
+		last_checked_at=CASE WHEN excluded.last_checked_at>0 THEN excluded.last_checked_at ELSE health_nzb_state.last_checked_at END,
+		last_error=excluded.last_error,
+		last_repair_job_id=CASE WHEN excluded.last_repair_job_id<>'' THEN excluded.last_repair_job_id ELSE health_nzb_state.last_repair_job_id END,
+		last_repaired_at=CASE WHEN excluded.last_repaired_at>0 THEN excluded.last_repaired_at ELSE health_nzb_state.last_repaired_at END`,
+		path, status, lastCheckedAt, lastError, repairJobID, lastRepairedAt)
+	return err
 }
 
 func (r *Runner) healthRefreshImportDB(ctx context.Context, cfg config.Config, jobID, nzbPath string) error {
