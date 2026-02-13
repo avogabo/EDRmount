@@ -152,8 +152,8 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		}
 		dst := filepath.Join(workDir, d.Name())
 		_ = os.Remove(dst)
-		// best-effort symlink; fallback to copy
-		if err := os.Symlink(p, dst); err == nil {
+		// Prefer hardlink/copy (not symlink): par2 auto-discovery of volume files is more reliable with regular entries.
+		if err := os.Link(p, dst); err == nil {
 			parCount++
 			return nil
 		}
