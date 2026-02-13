@@ -1171,7 +1171,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Load imports + review initially
   refreshImports().catch(() => {});
-  refreshReview().catch(() => {});
   })().catch(err => {
     console.error(err);
     alert(String(err));
