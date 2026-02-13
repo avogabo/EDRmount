@@ -18,7 +18,6 @@ import (
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
 	"github.com/gaby/EDRmount/internal/library"
-	"github.com/gaby/EDRmount/internal/meta/tmdb"
 	"github.com/gaby/EDRmount/internal/streamer"
 )
 
@@ -201,35 +200,20 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	}
 
 	if !g.IsSeries {
+		// Fast path for FUSE listing: avoid external resolvers (TMDB/FileBot) on each directory read.
 		movieTitle := g.Title
 		tmdbID := 0
-		if fb, ok := library.ResolveWithFileBot(ctxbg(ctx), n.fs.Cfg, row.Filename); ok {
-			if strings.TrimSpace(fb.Title) != "" {
-				movieTitle = fb.Title
-			}
-			if fb.Year > 0 {
-				year = fb.Year
-				nums["year"] = fb.Year
-			}
-			if fb.TMDB > 0 {
-				tmdbID = fb.TMDB
-			}
+		// Respect explicit override tmdb_id/title/year if present.
+		_ = n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT tmdb_id,title,year FROM library_overrides WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&tmdbID, &movieTitle, &year)
+		if strings.TrimSpace(movieTitle) == "" {
+			movieTitle = g.Title
 		}
-		// Prefer explicit override tmdb_id if present.
-		_ = n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT tmdb_id FROM library_overrides WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&tmdbID)
+		if year < 0 {
+			year = 0
+		}
+		nums["year"] = year
 		if tmdbID < 0 {
 			tmdbID = 0
-		}
-		if n.fs.resolver != nil && tmdbID == 0 {
-			if m, ok := n.fs.resolver.ResolveMovie(ctxbg(ctx), movieTitle, year); ok {
-				movieTitle = m.Title
-				y := m.ReleaseYear()
-				if y > 0 {
-					year = y
-					nums["year"] = y
-				}
-				tmdbID = m.ID
-			}
 		}
 		vars["title"] = movieTitle
 		vars["tmdb_id"] = fmt.Sprintf("%d", tmdbID)
@@ -243,48 +227,10 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 		return p
 	}
 
-	// Series
+	// Series (fast path): avoid external resolvers on each directory listing.
 	seriesName := g.Title
 	seriesTMDB := 0
 	bucket := l.EmisionFolder
-	if fb, ok := library.ResolveWithFileBot(ctxbg(ctx), n.fs.Cfg, row.Filename); ok {
-		if strings.TrimSpace(fb.Title) != "" {
-			seriesName = fb.Title
-		}
-		if fb.Year > 0 {
-			year = fb.Year
-			nums["year"] = fb.Year
-		}
-		if fb.TMDB > 0 {
-			seriesTMDB = fb.TMDB
-		}
-	}
-	if n.fs.resolver != nil {
-		if tv, ok := n.fs.resolver.ResolveTV(ctxbg(ctx), seriesName, year); ok {
-			if strings.TrimSpace(seriesName) == "" || seriesTMDB == 0 {
-				seriesName = tv.Name
-			}
-			y := tv.FirstAirYear()
-			if y > 0 {
-				year = y
-				nums["year"] = y
-			}
-			if seriesTMDB == 0 {
-				seriesTMDB = tv.ID
-			}
-			b := tmdb.MapTVStatusToBucket(tv.Status)
-			if b == tmdb.SeriesBucketFinalizada {
-				bucket = l.FinalizadasFolder
-			} else if b == tmdb.SeriesBucketEmision {
-				bucket = l.EmisionFolder
-			}
-			if g.Season > 0 && g.Episode > 0 {
-				if epName, ok := n.fs.resolver.ResolveEpisodeTitle(ctxbg(ctx), tv.ID, g.Season, g.Episode); ok {
-					vars["episode_title"] = epName
-				}
-			}
-		}
-	}
 	if _, ok := vars["episode_title"]; !ok {
 		vars["episode_title"] = "Episode"
 	}
