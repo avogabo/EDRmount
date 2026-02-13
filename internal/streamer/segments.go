@@ -198,7 +198,9 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 		}
 	}
 	if !writtenAny {
-		return io.EOF
+		// Requested range starts beyond currently addressable decoded data.
+		// For FUSE readers this should behave like EOF (empty read), not I/O error.
+		return nil
 	}
 	return nil
 }

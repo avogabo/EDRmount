@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -77,6 +79,10 @@ func (n *libFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 	st := streamer.New(n.fs.Cfg.Download, n.fs.Jobs, n.fs.Cfg.Paths.CacheDir, n.fs.Cfg.Paths.CacheMaxBytes)
 	buf := &bytes.Buffer{}
 	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
+		if errors.Is(err, io.EOF) {
+			resp.Data = nil
+			return nil
+		}
 		log.Printf("fuse library read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
 		return fuse.EIO
 	}
