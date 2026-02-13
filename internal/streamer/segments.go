@@ -123,79 +123,82 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	if start < 0 {
 		start = 0
 	}
-	if end >= layout.Total {
-		end = layout.Total - 1
-	}
 	if end < start {
 		return fmt.Errorf("invalid range")
 	}
 
-	// find starting segment index
-	idx := sort.Search(len(layout.Offsets), func(i int) bool {
-		return layout.Offsets[i] > start
-	}) - 1
-	if idx < 0 {
-		idx = 0
-	}
-
-	// prefetch next segments (best-effort) - fire and forget
-	if prefetch > 0 {
-		for j := 1; j <= prefetch; j++ {
-			k := idx + j
-			if k >= 0 && k < len(layout.Segs) {
-				seg := layout.Segs[k]
-				go func() {
-					ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-					defer cancel()
-					_, _ = s.ensureSegment(ctx2, seg)
-				}()
-			}
-		}
-	}
-
-	remainingStart := start
-	remainingEnd := end
-	for i := idx; i < len(layout.Segs); i++ {
+	// IMPORTANT: NZB segment bytes are often ENCODED sizes and may not match decoded payload sizes.
+	// Build range mapping using actual cached/decoded segment file sizes.
+	var off int64 = 0
+	writtenAny := false
+	for i := 0; i < len(layout.Segs); i++ {
 		seg := layout.Segs[i]
-		segStart := layout.Offsets[i]
-		segEnd := segStart + seg.Bytes - 1
-		if remainingStart > segEnd {
-			continue
-		}
-		if remainingEnd < segStart {
-			break
-		}
-		// ensure segment cached
 		p, err := s.ensureSegment(ctx, seg)
 		if err != nil {
 			return err
 		}
+		st, err := os.Stat(p)
+		if err != nil {
+			return err
+		}
+		segSize := st.Size()
+		if segSize <= 0 {
+			continue
+		}
+		segStart := off
+		segEnd := off + segSize - 1
+		off += segSize
+
+		if start > segEnd {
+			continue
+		}
+		if end < segStart {
+			break
+		}
+
 		f, err := os.Open(p)
 		if err != nil {
 			return err
 		}
-		// compute slice within this segment
-		s := remainingStart
-		if s < segStart {
-			s = segStart
+		sliceStart := start
+		if sliceStart < segStart {
+			sliceStart = segStart
 		}
-		e := remainingEnd
-		if e > segEnd {
-			e = segEnd
+		sliceEnd := end
+		if sliceEnd > segEnd {
+			sliceEnd = segEnd
 		}
-		// seek relative
-		if _, err := f.Seek(s-segStart, 0); err != nil {
+		if _, err := f.Seek(sliceStart-segStart, 0); err != nil {
 			_ = f.Close()
 			return err
 		}
-		if _, err := io.CopyN(w, f, (e-s)+1); err != nil {
+		if _, err := io.CopyN(w, f, (sliceEnd-sliceStart)+1); err != nil {
 			_ = f.Close()
 			return err
 		}
 		_ = f.Close()
-		if e == remainingEnd {
+		writtenAny = true
+		if sliceEnd == end {
 			break
 		}
+
+		// best-effort prefetch next segments
+		if prefetch > 0 {
+			for j := 1; j <= prefetch; j++ {
+				k := i + j
+				if k >= 0 && k < len(layout.Segs) {
+					next := layout.Segs[k]
+					go func() {
+						ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+						defer cancel()
+						_, _ = s.ensureSegment(ctx2, next)
+					}()
+				}
+			}
+		}
+	}
+	if !writtenAny {
+		return io.EOF
 	}
 	return nil
 }
