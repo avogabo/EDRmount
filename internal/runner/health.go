@@ -331,7 +331,13 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if err := r.healthRefreshImportDB(ctx, cfg, jobID, nzbPath); err != nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: db refresh WARN: "+err.Error())
 	}
+	if err := r.healthRegeneratePAR2(ctx, cfg, jobID, nzbPath, outFile); err != nil {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: par2 refresh WARN: "+err.Error())
+	}
 
+	if err := os.RemoveAll(workDir); err == nil {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: cleaned workdir")
+	}
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: repaired OK (backup=%s)", bakPath))
 	return nil
 }
@@ -375,6 +381,104 @@ func (r *Runner) healthRefreshImportDB(ctx context.Context, cfg config.Config, j
 		return err
 	}
 	_ = r.jobs.AppendLog(ctx, jobID, "health: db reimport+resolved refreshed")
+	return nil
+}
+
+func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jobID, nzbPath, mediaPath string) error {
+	if !cfg.Upload.Par.Enabled || cfg.Upload.Par.RedundancyPercent <= 0 {
+		return errors.New("par2 disabled in config")
+	}
+	parRoot := strings.TrimSpace(cfg.Upload.Par.Dir)
+	if parRoot == "" {
+		parRoot = "/host/inbox/par2"
+	}
+	outRoot := strings.TrimSpace(cfg.NgPost.OutputDir)
+	if outRoot == "" {
+		outRoot = "/host/inbox/nzb"
+	}
+
+	norm := func(s string) string {
+		s = strings.ToLower(s)
+		b := make([]byte, 0, len(s))
+		dash := false
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+			if ok {
+				b = append(b, c)
+				dash = false
+				continue
+			}
+			if !dash {
+				b = append(b, '-')
+				dash = true
+			}
+		}
+		return strings.Trim(string(b), "-")
+	}
+
+	stem := strings.TrimSuffix(filepath.Base(nzbPath), filepath.Ext(nzbPath))
+	want := norm(stem)
+	relDir, _ := filepath.Rel(outRoot, filepath.Dir(nzbPath))
+	if strings.HasPrefix(relDir, "..") {
+		relDir = ""
+	}
+	keepDir := filepath.Join(parRoot, relDir)
+	_ = os.MkdirAll(keepDir, 0o755)
+
+	stagingDir := filepath.Join("/cache", "health", jobID, "par-new")
+	_ = os.RemoveAll(stagingDir)
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return err
+	}
+	parBase := filepath.Join(stagingDir, stem+".par2")
+	args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), "-B/", parBase, mediaPath}
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 regenerate: par2 %s", strings.Join(args, " ")))
+	if err := runCommand(ctx, func(line string) {
+		clean := strings.TrimSpace(line)
+		if clean != "" {
+			_ = r.jobs.AppendLog(ctx, jobID, clean)
+		}
+	}, "par2", args...); err != nil {
+		return err
+	}
+
+	removed := 0
+	entries, _ := os.ReadDir(keepDir)
+	for _, e := range entries {
+		n := strings.ToLower(e.Name())
+		if e.IsDir() || !strings.HasSuffix(n, ".par2") {
+			continue
+		}
+		base := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		if !strings.HasPrefix(norm(base), want) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(keepDir, e.Name())); err == nil {
+			removed++
+		}
+	}
+
+	moved := 0
+	newEntries, _ := os.ReadDir(stagingDir)
+	for _, e := range newEntries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".par2") {
+			continue
+		}
+		src := filepath.Join(stagingDir, e.Name())
+		dst := filepath.Join(keepDir, e.Name())
+		_ = os.Remove(dst)
+		if err := os.Rename(src, dst); err == nil {
+			moved++
+			continue
+		}
+		if err := copyFilePerm(src, dst, 0o644); err == nil {
+			_ = os.Remove(src)
+			moved++
+		}
+	}
+	_ = os.RemoveAll(stagingDir)
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 refreshed (removed=%d new=%d dir=%s)", removed, moved, keepDir))
 	return nil
 }
 
