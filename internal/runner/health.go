@@ -384,7 +384,13 @@ func (r *Runner) healthUploadCleanNZB(ctx context.Context, jobID string, cfg con
 			args = append(args, "-n", fmt.Sprintf("%d", ng.Connections))
 		}
 		args = append(args, "-g", ng.Groups)
-		args = append(args, "--obfuscate-articles")
+		// Safe obfuscation: metadata only (same strategy as normal upload path).
+		args = append(args,
+			"--subject", "${rand(40)} yEnc ({part}/{parts})",
+			"--nzb-subject", `"{filename}" yEnc ({part}/{parts})`,
+			"--message-id", "${rand(24)}-${rand(12)}@nyuu",
+			"--from", "poster <poster@example.com>",
+		)
 		args = append(args, "-o", outNZB, "-O")
 		args = append(args, "-u", ng.User, "-p", ng.Pass)
 		args = append(args, "-r", "keep")
