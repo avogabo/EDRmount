@@ -436,6 +436,10 @@ async function restartNow() {
 }
 
 // HEALTH (NZB Repair)
+const HEALTH_ROOT = '';
+let healthPath = HEALTH_ROOT;
+let healthSelected = null;
+
 async function refreshHealthScan() {
   const box = document.getElementById('healthList');
   const st = document.getElementById('healthStatus');
@@ -448,77 +452,115 @@ async function refreshHealthScan() {
     if (!Number.isFinite(n) || n <= 0) return '—';
     return fmtTime(new Date(n * 1000).toISOString());
   };
-  const statusLabel = (e) => {
-    if (e.last_repair_outcome === 'done') return 'repaired ✅';
-    if (e.last_repair_outcome === 'failed') return 'repair-failed ❌';
-    if (e.status) return e.status;
-    return 'unknown';
-  };
 
   set('Cargando… (Loading)');
   box.innerHTML = '';
-  if (summary) summary.textContent = '';
+
   try {
     const data = await apiGet('/api/v1/health/scan');
     const entries = (data && data.entries) ? data.entries : [];
     const sum = (data && data.summary) ? data.summary : {};
 
-    if (summary) {
-      summary.textContent = `Actual: ${sum.checked_in_current_run || 0}/${sum.total || entries.length} comprobados · Última completa: ${fmtUnix(sum.last_full_run_at)} · Inicio ciclo actual: ${fmtUnix(sum.current_run_started_at)}`;
-    }
-
-    const byDir = new Map();
-    for (const e of entries) {
-      const rel = String(e.rel_path || '').replaceAll('\\', '/');
-      const i = rel.lastIndexOf('/');
-      const dir = i >= 0 ? rel.slice(0, i) : '.';
-      if (!byDir.has(dir)) byDir.set(dir, []);
-      byDir.get(dir).push(e);
-    }
-
-    const dirs = Array.from(byDir.keys()).sort((a, b) => a.localeCompare(b));
-    for (const dir of dirs) {
-      const head = el('div', { class: 'listRow' });
-      head.style.gridTemplateColumns = '1fr';
-      head.style.background = '#151515';
-      head.appendChild(el('div', { class: 'mono', text: `📁 ${dir}` }));
-      box.appendChild(head);
-
-      const items = byDir.get(dir).sort((a, b) => String(a.rel_path || '').localeCompare(String(b.rel_path || '')));
-      for (const e of items) {
-        const row = el('div', { class: 'listRow' });
-        row.style.gridTemplateColumns = '1fr 120px 160px 160px 120px 120px';
-
-        const name = String(e.rel_path || e.path || '').split('/').pop() || e.path;
-        row.appendChild(el('div', { class: 'mono', text: `${name} · ${statusLabel(e)}` }));
-        row.appendChild(el('div', { class: 'mono muted', text: fmtSize(e.size) }));
-        row.appendChild(el('div', { class: 'mono muted', text: fmtTime(e.mod_time) }));
-        row.appendChild(el('div', { class: 'mono muted', text: fmtUnix(e.last_checked_at) }));
-        row.appendChild(el('div', { class: 'mono muted', text: fmtUnix(e.last_repaired_at) }));
-
-        const btn = el('button', { class: 'btn', type: 'button', text: 'Reparar' });
-        btn.onclick = async (ev) => {
-          ev.stopPropagation();
-          set('Encolando reparación… (Queueing)');
-          try {
-            await apiPostJson('/api/v1/jobs/enqueue/health-repair', { path: e.path });
-            set('OK: job encolado (queued).');
-          } catch (err) {
-            set('Error: ' + String(err));
-          }
-        };
-        const cell = el('div');
-        cell.appendChild(btn);
-        row.appendChild(cell);
-
-        box.appendChild(row);
+    const cbox = document.getElementById('healthCrumbs');
+    if (cbox) {
+      cbox.innerHTML = '';
+      const mk = (txt, target) => {
+        const b = el('button', { class: 'crumb', type: 'button', text: txt });
+        b.onclick = () => { healthPath = target; refreshHealthScan().catch(err => set('Error: ' + String(err))); };
+        return b;
+      };
+      cbox.appendChild(mk('nzb', ''));
+      const segs = (healthPath || '').split('/').filter(Boolean);
+      let acc = '';
+      for (const s of segs) {
+        cbox.appendChild(el('span', { class: 'crumbSep', text: '›' }));
+        acc = acc ? `${acc}/${s}` : s;
+        cbox.appendChild(mk(s, acc));
       }
     }
 
-    set(`OK (${entries.length})`);
+    const childrenDirs = new Set();
+    const files = [];
+    for (const e of entries) {
+      const rel = String(e.rel_path || '').replaceAll('\\', '/');
+      if (!rel) continue;
+      if (!healthPath) {
+        const p = rel.split('/');
+        if (p.length > 1) childrenDirs.add(p[0]); else files.push(e);
+      } else {
+        const pref = healthPath + '/';
+        if (!rel.startsWith(pref)) continue;
+        const tail = rel.slice(pref.length);
+        if (!tail) continue;
+        const p = tail.split('/');
+        if (p.length > 1) childrenDirs.add(p[0]); else files.push(e);
+      }
+    }
+
+    if (summary) {
+      summary.innerHTML = '';
+      summary.appendChild(el('div', { class: 'muted', text: `Actual: ${sum.checked_in_current_run || 0}/${sum.total || entries.length} · Última completa: ${fmtUnix(sum.last_full_run_at)}` }));
+      if (healthSelected) {
+        const lbl = `${healthSelected.rel_path} · check: ${fmtUnix(healthSelected.last_checked_at)} · repair: ${fmtUnix(healthSelected.last_repaired_at)} · estado: ${healthSelected.last_repair_outcome || healthSelected.status || 'unknown'}`;
+        summary.appendChild(el('div', { class: 'mono', text: lbl }));
+      }
+    }
+
+    const dirs = Array.from(childrenDirs).sort((a,b)=>a.localeCompare(b));
+    for (const d of dirs) {
+      const row = el('div', { class: 'listRow' });
+      row.appendChild(el('div', { class: 'name' }, [el('div', { class: 'icon', text: 'DIR' }), el('div', { text: d })]));
+      row.appendChild(el('div', { class: 'mono muted', text: '' }));
+      row.appendChild(el('div', { class: 'mono muted', text: '' }));
+      row.onclick = () => {
+        healthPath = healthPath ? `${healthPath}/${d}` : d;
+        refreshHealthScan().catch(err => set('Error: ' + String(err)));
+      };
+      box.appendChild(row);
+    }
+
+    files.sort((a,b)=>String(a.rel_path||'').localeCompare(String(b.rel_path||'')));
+    for (const e of files) {
+      const name = String(e.rel_path || '').split('/').pop() || e.path;
+      const row = el('div', { class: 'listRow' });
+      row.appendChild(el('div', { class: 'name' }, [el('div', { class: 'icon', text: 'NZB' }), el('div', { class: 'mono', text: name })]));
+      row.appendChild(el('div', { class: 'mono muted', text: fmtSize(e.size) }));
+      row.appendChild(el('div', { class: 'mono muted', text: fmtTime(e.mod_time) }));
+      row.onclick = () => {
+        healthSelected = e;
+        refreshHealthScan().catch(err => set('Error: ' + String(err)));
+      };
+      box.appendChild(row);
+    }
+
+    if (healthSelected) {
+      const act = el('div', { class: 'row', style: 'padding:8px 12px; gap:8px;' });
+      const btn = el('button', { class: 'btn', type: 'button', text: 'Reparar seleccionado' });
+      btn.onclick = async () => {
+        set('Encolando reparación…');
+        try {
+          await apiPostJson('/api/v1/jobs/enqueue/health-repair', { path: healthSelected.path });
+          set('OK: job encolado');
+        } catch (err) {
+          set('Error: ' + String(err));
+        }
+      };
+      act.appendChild(btn);
+      box.appendChild(act);
+    }
+
+    set(`OK (${dirs.length + files.length})`);
   } catch (e) {
     set('Error: ' + String(e));
   }
+}
+
+function goUpHealth() {
+  if (!healthPath) return;
+  const p = healthPath.split('/').filter(Boolean);
+  p.pop();
+  healthPath = p.join('/');
+  refreshHealthScan().catch(err => setStatus('healthStatus', String(err)));
 }
 
 // LOGS (Jobs)
@@ -1203,6 +1245,12 @@ window.addEventListener('DOMContentLoaded', () => {
   // Health
   if (document.getElementById('btnHealthScan')) {
     document.getElementById('btnHealthScan').onclick = () => refreshHealthScan().catch(() => {});
+  }
+  if (document.getElementById('btnHealthRefresh')) {
+    document.getElementById('btnHealthRefresh').onclick = () => refreshHealthScan().catch(() => {});
+  }
+  if (document.getElementById('btnHealthUp')) {
+    document.getElementById('btnHealthUp').onclick = () => goUpHealth();
   }
 
   // Logs

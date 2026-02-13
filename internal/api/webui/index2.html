@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.37</span>
+        <span class="pill" id="buildVersionPill">v1.38</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -385,24 +385,25 @@
           <div class="split">
             <div>
               <h2 class="sectionTitle">Health (NZB Repair)</h2>
-              <div class="muted">Escanea RAW (<span class="mono">/host/inbox/nzb</span>) y permite reparar NZBs incompletos.</div>
+              <div class="muted">Vista tipo Import, con estado health por NZB.</div>
             </div>
             <div class="row">
-              <button class="btn" id="btnHealthScan">Escanear (Scan)</button>
+              <button class="btn" id="btnHealthUp">Arriba (Up)</button>
+              <button class="btn" id="btnHealthRefresh">Actualizar (Refresh)</button>
+              <button class="btn" id="btnHealthScan">Escanear ahora (Scan now)</button>
               <span class="muted" id="healthStatus"></span>
             </div>
           </div>
 
+          <div class="row" style="margin-top:8px"><div class="crumbs" id="healthCrumbs" style="flex:1"></div></div>
+
           <div class="grid" style="margin-top:12px">
             <div class="list">
               <div id="healthSummary" class="muted" style="padding:10px 12px;border-bottom:1px solid #262626"></div>
-              <div class="listHeader" style="grid-template-columns: 1fr 120px 160px 160px 120px 120px;">
-                <div>NZB (árbol)</div>
+              <div class="listHeader">
+                <div>Nombre (Name)</div>
                 <div class="mono">Size</div>
                 <div class="mono">ModTime</div>
-                <div class="mono">Última comprob.</div>
-                <div class="mono">Última reparación</div>
-                <div>Acción</div>
               </div>
               <div id="healthList"></div>
             </div>
