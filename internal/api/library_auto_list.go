@@ -64,6 +64,18 @@ func (s *Server) registerLibraryAutoListRoutes() {
 			rel = ""
 		}
 
+		// Fast path: root listing doesn't need DB scans.
+		if rel == "" {
+			l := cfg.Library.Defaults()
+			movies := filepath.Join(autoRoot, l.MoviesRoot)
+			series := filepath.Join(autoRoot, l.SeriesRoot)
+			_ = json.NewEncoder(w).Encode(map[string]any{"entries": []*autoEntry{
+				{Name: l.MoviesRoot, Path: movies, IsDir: true, Size: 0, ModTime: ""},
+				{Name: l.SeriesRoot, Path: series, IsDir: true, Size: 0, ModTime: ""},
+			}})
+			return
+		}
+
 		// Collect children under rel.
 		entries := map[string]*autoEntry{}
 		addDir := func(name, childRel string) {
