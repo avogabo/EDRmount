@@ -97,9 +97,11 @@ func (r *Runner) runImport(ctx context.Context, j *jobs.Job) {
 		return
 	}
 	_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("imported NZB: files=%d total_bytes=%d", files, bytes))
-	if err := imp.EnrichLibraryResolved(ctx, cfg, j.ID); err != nil {
+	enrichCtx, cancelEnrich := context.WithTimeout(ctx, 120*time.Second)
+	if err := imp.EnrichLibraryResolved(enrichCtx, cfg, j.ID); err != nil {
 		_ = r.jobs.AppendLog(ctx, j.ID, "library_resolved: WARN: "+err.Error())
 	}
+	cancelEnrich()
 
 	// Optional: ask Plex to refresh only the new item(s) in library-auto.
 	if r.GetConfig != nil {

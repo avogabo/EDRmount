@@ -188,14 +188,14 @@ func seedManualFromNZB(ctx context.Context, tx *sql.Tx, importID, nzbPath string
 		var idx int
 		var fn string
 		if err := rows.Scan(&idx, &fn); err != nil {
-			return err
+			continue
 		}
 		if strings.TrimSpace(fn) == "" {
 			fn = fmt.Sprintf("file_%04d.bin", idx)
 		}
 		itemID := uuid.NewString()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO manual_items(id,dir_id,label,import_id,file_idx) VALUES(?,?,?,?,?)`, itemID, leaf, fn, importID, idx); err != nil {
-			return err
+			continue
 		}
 	}
 	return nil
@@ -231,9 +231,10 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 		if name == "" {
 			name = filepath.Base(subj)
 		}
+		fileCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 		g := library.GuessFromFilename(name)
 		fbTMDB := 0
-		if fb, ok := library.ResolveWithFileBot(ctx, cfg, name); ok {
+		if fb, ok := library.ResolveWithFileBot(fileCtx, cfg, name); ok {
 			if strings.TrimSpace(fb.Title) != "" {
 				g.Title = fb.Title
 			}
@@ -258,7 +259,7 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 			if fbTMDB > 0 {
 				tmdbID = fbTMDB
 			}
-			if tv, ok := res.ResolveTV(ctx, title, year); ok {
+			if tv, ok := res.ResolveTV(fileCtx, title, year); ok {
 				if strings.TrimSpace(tv.Name) != "" {
 					title = tv.Name
 				}
@@ -273,7 +274,7 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 					seriesStatus = l.EmisionFolder
 				}
 				if season > 0 && episode > 0 {
-					if ep, ok := res.ResolveEpisodeTitle(ctx, tv.ID, season, episode); ok && strings.TrimSpace(ep) != "" {
+					if ep, ok := res.ResolveEpisodeTitle(fileCtx, tv.ID, season, episode); ok && strings.TrimSpace(ep) != "" {
 						episodeTitle = ep
 					}
 				}
@@ -282,7 +283,7 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 			if fbTMDB > 0 {
 				tmdbID = fbTMDB
 			}
-			if mv, ok := res.ResolveMovie(ctx, title, year); ok {
+			if mv, ok := res.ResolveMovie(fileCtx, title, year); ok {
 				if strings.TrimSpace(mv.Title) != "" {
 					title = mv.Title
 				}
@@ -344,7 +345,7 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 			virtualName = filepath.Base(virtualPath)
 		}
 
-		if _, err := db.ExecContext(ctx, `
+		if _, err := db.ExecContext(fileCtx, `
 			INSERT INTO library_resolved(import_id,file_idx,kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title,virtual_dir,virtual_name,virtual_path,updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(import_id,file_idx) DO UPDATE SET
@@ -362,8 +363,10 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 			  virtual_path=excluded.virtual_path,
 			  updated_at=excluded.updated_at
 		`, importID, idx, kind, title, year, quality, tmdbID, seriesStatus, season, episode, episodeTitle, virtualDir, virtualName, virtualPath, now); err != nil {
-			return err
+			cancel()
+			continue
 		}
+		cancel()
 	}
 	return nil
 }
