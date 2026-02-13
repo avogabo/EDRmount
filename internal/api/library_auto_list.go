@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
-	"github.com/gaby/EDRmount/internal/fusefs"
 )
 
 type autoEntry struct {
@@ -103,48 +102,61 @@ func (s *Server) registerLibraryAutoListRoutes() {
 			// FUSE readdir can block intermittently. Fall back to DB-derived structure.
 		}
 
-		// Fallback: derive structure from library-auto virtual paths (NOT nzb paths),
-		// so semantics match Biblioteca Auto/Manual exactly.
-		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT id FROM nzb_imports ORDER BY imported_at DESC LIMIT 1200`)
+		// Fallback fast path for folders/subfolders from NZB tree.
+		// This is used only when FUSE readdir stalls.
+		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT path FROM nzb_imports ORDER BY imported_at DESC LIMIT 4000`)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		defer rows.Close()
+		nzbRoot := strings.TrimSpace(cfg.Watch.NZB.Dir)
+		if nzbRoot == "" {
+			nzbRoot = "/host/inbox/nzb"
+		}
+		nzbRoot = filepath.Clean(nzbRoot)
 
 		dirs := map[string]*autoEntry{}
 		files := map[string]*autoEntry{}
+		partsRel := strings.Split(rel, string(filepath.Separator))
+		depth := 0
+		if rel != "" {
+			depth = len(partsRel)
+		}
 		for rows.Next() {
-			var importID string
-			if err := rows.Scan(&importID); err != nil {
+			var nzbPath string
+			if err := rows.Scan(&nzbPath); err != nil {
 				continue
 			}
-			paths, err := fusefs.AutoVirtualPathsForImport(r.Context(), cfg, s.jobs, importID)
+			nzbPath = filepath.Clean(nzbPath)
+			if !(nzbPath == nzbRoot || strings.HasPrefix(nzbPath, nzbRoot+string(filepath.Separator))) {
+				continue
+			}
+			relNZB, err := filepath.Rel(nzbRoot, nzbPath)
 			if err != nil {
 				continue
 			}
-			for _, vr := range paths {
-				vr = filepath.Clean(vr)
-				if vr == "." || vr == "" {
-					continue
-				}
-				if vr == rel || !strings.HasPrefix(vr, rel+string(filepath.Separator)) {
-					continue
-				}
-				sub := strings.TrimPrefix(vr, rel+string(filepath.Separator))
-				parts := strings.Split(sub, string(filepath.Separator))
-				if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
-					continue
-				}
-				child := parts[0]
-				childRel := filepath.Join(rel, child)
-				full := filepath.Join(autoRoot, childRel)
-				if len(parts) > 1 {
-					dirs[child] = &autoEntry{Name: child, Path: full, IsDir: true}
-				} else {
-					files[child] = &autoEntry{Name: child, Path: full, IsDir: false}
-				}
+			relNZB = filepath.Clean(relNZB)
+			if relNZB == "." || relNZB == "" {
+				continue
+			}
+			if relNZB == rel || !strings.HasPrefix(relNZB, rel+string(filepath.Separator)) {
+				continue
+			}
+			sub := strings.TrimPrefix(relNZB, rel+string(filepath.Separator))
+			parts := strings.Split(sub, string(filepath.Separator))
+			if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+				continue
+			}
+			child := parts[0]
+			childRel := filepath.Join(rel, child)
+			full := filepath.Join(autoRoot, childRel)
+			if len(parts) > 1 {
+				dirs[child] = &autoEntry{Name: child, Path: full, IsDir: true}
+			} else if depth >= 3 {
+				// Only include file-level entries on deeper levels.
+				files[child] = &autoEntry{Name: child, Path: full, IsDir: false}
 			}
 		}
 		out := make([]*autoEntry, 0, len(dirs)+len(files))
