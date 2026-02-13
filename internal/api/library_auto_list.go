@@ -155,8 +155,13 @@ func (s *Server) registerLibraryAutoListRoutes() {
 			if len(parts) > 1 {
 				dirs[child] = &autoEntry{Name: child, Path: full, IsDir: true}
 			} else if depth >= 3 {
-				// Only include file-level entries on deeper levels.
-				files[child] = &autoEntry{Name: child, Path: full, IsDir: false}
+				// Never expose raw .nzb leaves in Biblioteca fallback.
+				name := child
+				if strings.HasSuffix(strings.ToLower(name), ".nzb") {
+					name = strings.TrimSuffix(name, filepath.Ext(name))
+				}
+				dirRel := filepath.Join(rel, name)
+				dirs[name] = &autoEntry{Name: name, Path: filepath.Join(autoRoot, dirRel), IsDir: true}
 			}
 		}
 		out := make([]*autoEntry, 0, len(dirs)+len(files))
