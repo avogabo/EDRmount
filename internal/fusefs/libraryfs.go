@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"bazil.org/fuse"
@@ -35,6 +36,8 @@ type LibraryFS struct {
 	Jobs *jobs.Store
 
 	resolver *library.Resolver
+	streamMu sync.Mutex
+	stream   *streamer.Streamer
 }
 
 func (r *LibraryFS) Root() (fs.Node, error) {
@@ -42,6 +45,15 @@ func (r *LibraryFS) Root() (fs.Node, error) {
 		r.resolver = library.NewResolver(r.Cfg)
 	}
 	return &libDir{fs: r, rel: ""}, nil
+}
+
+func (r *LibraryFS) getStreamer() *streamer.Streamer {
+	r.streamMu.Lock()
+	defer r.streamMu.Unlock()
+	if r.stream == nil {
+		r.stream = streamer.New(r.Cfg.Download, r.Jobs, r.Cfg.Paths.CacheDir, r.Cfg.Paths.CacheMaxBytes)
+	}
+	return r.stream
 }
 
 type libFile struct {
@@ -76,7 +88,7 @@ func (n *libFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		end = n.size - 1
 	}
 
-	st := streamer.New(n.fs.Cfg.Download, n.fs.Jobs, n.fs.Cfg.Paths.CacheDir, n.fs.Cfg.Paths.CacheMaxBytes)
+	st := n.fs.getStreamer()
 	buf := &bytes.Buffer{}
 	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
 		if errors.Is(err, io.EOF) {
