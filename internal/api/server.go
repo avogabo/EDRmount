@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"strconv"
 	"strings"
 	"sync"
 
@@ -144,7 +145,15 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			items, err := s.jobs.List(r.Context(), 100)
+			limit := 40
+			if q := strings.TrimSpace(r.URL.Query().Get("limit")); q != "" {
+				if n, err := strconv.Atoi(q); err == nil {
+					if n > 0 && n <= 200 {
+						limit = n
+					}
+				}
+			}
+			items, err := s.jobs.List(r.Context(), limit)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

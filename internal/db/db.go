@@ -53,6 +53,7 @@ func (d *DB) migrate() error {
 			error TEXT
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_jobs_state_updated ON jobs(state, updated_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);`,
 		`CREATE TABLE IF NOT EXISTS job_logs (
 			job_id TEXT NOT NULL,
 			ts INTEGER NOT NULL,
