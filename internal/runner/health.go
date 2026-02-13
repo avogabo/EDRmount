@@ -256,8 +256,9 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 target mapped: %s -> %s", expectedRel, filepath.Base(outFile)))
 
 	// par2 repair in-place
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", "/usr/bin/par2", filepath.Base(parMain), filepath.Base(outFile)))
-	cmd := exec.CommandContext(ctx, "par2", "r", parMain, outFile)
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s", "/usr/bin/par2", filepath.Base(parMain)))
+	// IMPORTANT: do not pass an alternate target filename here; let PAR2 use its own indexed target paths.
+	cmd := exec.CommandContext(ctx, "par2", "r", parMain)
 	cmd.Dir = workDir
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
