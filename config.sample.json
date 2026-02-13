@@ -37,7 +37,7 @@
     "movie_file_template": "{title} ({year}) tmdb-{tmdb_id}{ext}",
     "series_dir_template": "{series_root}/{series_status}/{initial}/{series} ({year}) tmdb-{tmdb_id}",
     "season_folder_template": "TEMPORADA {season:00}",
-    "series_file_template": "{season:00}x{episode:00} - {episode_title}{ext}"
+    "series_file_template": "{series} ({year}) - {season:00}x{episode:00} - {episode_title}{ext}"
   },
   "metadata": {
     "tmdb": {

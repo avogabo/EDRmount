@@ -47,8 +47,8 @@ func (l Library) withDefaults() Library {
 	if out.SeasonFolderTemplate == "" {
 		out.SeasonFolderTemplate = "TEMPORADA {season:00}"
 	}
-	if out.SeriesFileTemplate == "" {
-		out.SeriesFileTemplate = "{season:00}x{episode:00} - {episode_title}{ext}"
+	if out.SeriesFileTemplate == "" || out.SeriesFileTemplate == "{season:00}x{episode:00} - {episode_title}{ext}" {
+		out.SeriesFileTemplate = "{series} ({year}) - {season:00}x{episode:00} - {episode_title}{ext}"
 	}
 	return out
 }
