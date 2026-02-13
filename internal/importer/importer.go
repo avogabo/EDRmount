@@ -208,6 +208,11 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 	if err := db.QueryRowContext(ctx, `SELECT id FROM nzb_imports WHERE path=? ORDER BY imported_at DESC LIMIT 1`, nzbPath).Scan(&importID); err != nil {
 		return err
 	}
+	return i.EnrichLibraryResolved(ctx, cfg, importID)
+}
+
+func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config, importID string) error {
+	db := i.jobs.DB().SQL
 	rows, err := db.QueryContext(ctx, `SELECT idx, COALESCE(filename,''), subject FROM nzb_files WHERE import_id=? ORDER BY idx`, importID)
 	if err != nil {
 		return err
