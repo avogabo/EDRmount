@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
+	"github.com/gaby/EDRmount/internal/importer"
 	"github.com/gaby/EDRmount/internal/nntp"
 	"github.com/gaby/EDRmount/internal/nzb"
 	"github.com/gaby/EDRmount/internal/yenc"
@@ -313,17 +314,67 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	}
 
 	_ = os.Remove(bakPath)
-	if rerr := os.Rename(nzbPath, bakPath); rerr != nil {
+	if err := copyFilePerm(nzbPath, bakPath, 0o644); err != nil {
 		_ = os.Remove(destTmp)
-		return fmt.Errorf("backup original: %w", rerr)
+		return fmt.Errorf("backup original: %w", err)
+	}
+	if err := os.Remove(nzbPath); err != nil {
+		_ = os.Remove(destTmp)
+		return fmt.Errorf("remove original after backup: %w", err)
 	}
 	if rerr := os.Rename(destTmp, nzbPath); rerr != nil {
-		_ = os.Rename(bakPath, nzbPath)
+		_ = copyFilePerm(bakPath, nzbPath, 0o644)
 		_ = os.Remove(destTmp)
 		return fmt.Errorf("replace nzb: %w", rerr)
 	}
 
+	if err := r.healthRefreshImportDB(ctx, cfg, jobID, nzbPath); err != nil {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: db refresh WARN: "+err.Error())
+	}
+
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: repaired OK (backup=%s)", bakPath))
+	return nil
+}
+
+func (r *Runner) healthRefreshImportDB(ctx context.Context, cfg config.Config, jobID, nzbPath string) error {
+	if r.jobs == nil || r.jobs.DB() == nil {
+		return errors.New("jobs db not configured")
+	}
+	db := r.jobs.DB().SQL
+	var importID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM nzb_imports WHERE path=? ORDER BY imported_at DESC LIMIT 1`, nzbPath).Scan(&importID); err == nil {
+		tx, err := db.BeginTx(ctx, nil)
+		if err == nil {
+			stmts := []string{
+				`DELETE FROM nzb_segments WHERE import_id=?`,
+				`DELETE FROM nzb_files WHERE import_id=?`,
+				`DELETE FROM library_overrides WHERE import_id=?`,
+				`DELETE FROM library_review_dismissed WHERE import_id=?`,
+				`DELETE FROM library_resolved WHERE import_id=?`,
+				`DELETE FROM manual_items WHERE import_id=?`,
+				`DELETE FROM nzb_imports WHERE id=?`,
+			}
+			for _, s := range stmts {
+				if _, e := tx.ExecContext(ctx, s, importID); e != nil {
+					_ = tx.Rollback()
+					return e
+				}
+			}
+			if e := tx.Commit(); e != nil {
+				return e
+			}
+			_ = r.jobs.AppendLog(ctx, jobID, "health: db old import removed: "+importID)
+		}
+	}
+
+	imp := importer.New(r.jobs)
+	if _, _, err := imp.ImportNZB(ctx, jobID, nzbPath); err != nil {
+		return err
+	}
+	if err := imp.EnrichLibraryResolved(ctx, cfg, jobID); err != nil {
+		return err
+	}
+	_ = r.jobs.AppendLog(ctx, jobID, "health: db reimport+resolved refreshed")
 	return nil
 }
 
