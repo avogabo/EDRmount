@@ -152,9 +152,15 @@ func (d *DB) migrate() error {
 			season INTEGER NOT NULL,
 			episode INTEGER NOT NULL,
 			episode_title TEXT NOT NULL,
+			virtual_dir TEXT NOT NULL DEFAULT '',
+			virtual_name TEXT NOT NULL DEFAULT '',
+			virtual_path TEXT NOT NULL DEFAULT '',
 			updated_at INTEGER NOT NULL,
 			PRIMARY KEY(import_id, file_idx)
 		);`,
+		`ALTER TABLE library_resolved ADD COLUMN virtual_dir TEXT NOT NULL DEFAULT '';`,
+		`ALTER TABLE library_resolved ADD COLUMN virtual_name TEXT NOT NULL DEFAULT '';`,
+		`ALTER TABLE library_resolved ADD COLUMN virtual_path TEXT NOT NULL DEFAULT '';`,
 		`CREATE INDEX IF NOT EXISTS idx_library_resolved_import ON library_resolved(import_id);`,
 
 		// Health scanning state

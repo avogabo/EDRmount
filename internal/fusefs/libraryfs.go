@@ -200,10 +200,17 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	}
 	// Prefer resolved metadata produced at import-time.
 	{
-		var kind, title, q, status, epTitle string
+		var kind, title, q, status, epTitle, virtualPath string
 		var y, tmdbID, season, episode int
-		err := n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title FROM library_resolved WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&kind, &title, &y, &q, &tmdbID, &status, &season, &episode, &epTitle)
+		err := n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title,virtual_path FROM library_resolved WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&kind, &title, &y, &q, &tmdbID, &status, &season, &episode, &epTitle, &virtualPath)
 		if err == nil {
+			if strings.TrimSpace(virtualPath) != "" {
+				vp := library.CleanPath(virtualPath)
+				if n.fs.Cfg.Library.Defaults().UppercaseFolders {
+					vp = library.ApplyUppercaseFolders(vp)
+				}
+				return vp
+			}
 			if strings.TrimSpace(title) != "" {
 				g.Title = title
 			}

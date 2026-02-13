@@ -227,6 +227,17 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 			name = filepath.Base(subj)
 		}
 		g := library.GuessFromFilename(name)
+		if fb, ok := library.ResolveWithFileBot(ctx, cfg, name); ok {
+			if strings.TrimSpace(fb.Title) != "" {
+				g.Title = fb.Title
+			}
+			if fb.Year > 0 {
+				g.Year = fb.Year
+			}
+			if fb.TMDB > 0 {
+				// kept below in tmdbID fallback
+			}
+		}
 		kind := "movie"
 		title := g.Title
 		year := g.Year
@@ -278,9 +289,52 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 		if strings.TrimSpace(episodeTitle) == "" {
 			episodeTitle = "Episode"
 		}
+
+		ext := g.Ext
+		if ext == "" {
+			ext = filepath.Ext(name)
+		}
+		initial := library.InitialFolder(title)
+		if initial == "" {
+			initial = library.InitialFolder(g.Title)
+		}
+		vars := map[string]string{
+			"movies_root":        l.MoviesRoot,
+			"series_root":        l.SeriesRoot,
+			"emision_folder":     l.EmisionFolder,
+			"finalizadas_folder": l.FinalizadasFolder,
+			"quality":            quality,
+			"initial":            initial,
+			"ext":                ext,
+			"title":              title,
+			"tmdb_id":            fmt.Sprintf("%d", tmdbID),
+			"series":             title,
+			"series_status":      seriesStatus,
+			"episode_title":      episodeTitle,
+		}
+		nums := map[string]int{"year": year, "season": season, "episode": episode}
+		virtualDir := ""
+		virtualName := ""
+		virtualPath := ""
+		if kind == "series" {
+			baseDir := library.CleanPath(library.Render(l.SeriesDirTemplate, vars, nums))
+			seasonDirName := library.CleanPath(library.Render(l.SeasonFolderTemplate, vars, nums))
+			virtualDir = filepath.Join(baseDir, seasonDirName)
+			virtualName = library.CleanPath(library.Render(l.SeriesFileTemplate, vars, nums))
+		} else {
+			virtualDir = library.CleanPath(library.Render(l.MovieDirTemplate, vars, nums))
+			virtualName = library.CleanPath(library.Render(l.MovieFileTemplate, vars, nums))
+		}
+		virtualPath = filepath.Join(virtualDir, virtualName)
+		if l.UppercaseFolders {
+			virtualPath = library.ApplyUppercaseFolders(virtualPath)
+			virtualDir = filepath.Dir(virtualPath)
+			virtualName = filepath.Base(virtualPath)
+		}
+
 		_, _ = db.ExecContext(ctx, `
-			INSERT INTO library_resolved(import_id,file_idx,kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+			INSERT INTO library_resolved(import_id,file_idx,kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title,virtual_dir,virtual_name,virtual_path,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(import_id,file_idx) DO UPDATE SET
 			  kind=excluded.kind,
 			  title=excluded.title,
@@ -291,8 +345,11 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 			  season=excluded.season,
 			  episode=excluded.episode,
 			  episode_title=excluded.episode_title,
+			  virtual_dir=excluded.virtual_dir,
+			  virtual_name=excluded.virtual_name,
+			  virtual_path=excluded.virtual_path,
 			  updated_at=excluded.updated_at
-		`, importID, idx, kind, title, year, quality, tmdbID, seriesStatus, season, episode, episodeTitle, now)
+		`, importID, idx, kind, title, year, quality, tmdbID, seriesStatus, season, episode, episodeTitle, virtualDir, virtualName, virtualPath, now)
 	}
 	return nil
 }
