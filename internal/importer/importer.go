@@ -227,6 +227,7 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 			name = filepath.Base(subj)
 		}
 		g := library.GuessFromFilename(name)
+		fbTMDB := 0
 		if fb, ok := library.ResolveWithFileBot(ctx, cfg, name); ok {
 			if strings.TrimSpace(fb.Title) != "" {
 				g.Title = fb.Title
@@ -235,7 +236,7 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 				g.Year = fb.Year
 			}
 			if fb.TMDB > 0 {
-				// kept below in tmdbID fallback
+				fbTMDB = fb.TMDB
 			}
 		}
 		kind := "movie"
@@ -249,6 +250,9 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 		episodeTitle := "Episode"
 		if g.IsSeries {
 			kind = "series"
+			if fbTMDB > 0 {
+				tmdbID = fbTMDB
+			}
 			if tv, ok := res.ResolveTV(ctx, title, year); ok {
 				if strings.TrimSpace(tv.Name) != "" {
 					title = tv.Name
@@ -270,6 +274,9 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 				}
 			}
 		} else {
+			if fbTMDB > 0 {
+				tmdbID = fbTMDB
+			}
 			if mv, ok := res.ResolveMovie(ctx, title, year); ok {
 				if strings.TrimSpace(mv.Title) != "" {
 					title = mv.Title
@@ -332,7 +339,7 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 			virtualName = filepath.Base(virtualPath)
 		}
 
-		_, _ = db.ExecContext(ctx, `
+		if _, err := db.ExecContext(ctx, `
 			INSERT INTO library_resolved(import_id,file_idx,kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title,virtual_dir,virtual_name,virtual_path,updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(import_id,file_idx) DO UPDATE SET
@@ -349,7 +356,9 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 			  virtual_name=excluded.virtual_name,
 			  virtual_path=excluded.virtual_path,
 			  updated_at=excluded.updated_at
-		`, importID, idx, kind, title, year, quality, tmdbID, seriesStatus, season, episode, episodeTitle, virtualDir, virtualName, virtualPath, now)
+		`, importID, idx, kind, title, year, quality, tmdbID, seriesStatus, season, episode, episodeTitle, virtualDir, virtualName, virtualPath, now); err != nil {
+			return err
+		}
 	}
 	return nil
 }
