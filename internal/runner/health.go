@@ -244,6 +244,17 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		return errors.New("health: PAR2 files were linked but main .par2 not found")
 	}
 
+	// par2 may expect the original relative target path embedded in PAR2 (e.g. host/inbox/media/...).
+	// Mirror that target in workdir pointing to our reconstructed outFile to avoid "Target ... missing".
+	expectedRel := filepath.Join("host", "inbox", "media", filepath.Base(outFile))
+	expectedAbs := filepath.Join(workDir, expectedRel)
+	_ = os.MkdirAll(filepath.Dir(expectedAbs), 0o755)
+	_ = os.Remove(expectedAbs)
+	if err := os.Symlink(outFile, expectedAbs); err != nil {
+		_ = copyFilePerm(outFile, expectedAbs, 0o644)
+	}
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 target mapped: %s -> %s", expectedRel, filepath.Base(outFile)))
+
 	// par2 repair in-place
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", "/usr/bin/par2", filepath.Base(parMain), filepath.Base(outFile)))
 	cmd := exec.CommandContext(ctx, "par2", "r", parMain, outFile)
