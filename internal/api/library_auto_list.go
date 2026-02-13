@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
@@ -21,6 +22,13 @@ type autoEntry struct {
 	ImportID string `json:"import_id,omitempty"`
 	FileIdx  int    `json:"file_idx,omitempty"`
 }
+
+type autoCacheEntry struct {
+	Entries []*autoEntry
+	At      time.Time
+}
+
+var autoFuseCache sync.Map
 
 func (s *Server) registerLibraryAutoListRoutes() {
 	// GET /api/v1/library/auto/list?path=/mount/library-auto/PELICULAS/...
@@ -95,83 +103,28 @@ func (s *Server) registerLibraryAutoListRoutes() {
 					full := filepath.Join(p, name)
 					out = append(out, &autoEntry{Name: name, Path: full, IsDir: de.IsDir(), Size: 0, ModTime: ""})
 				}
+				autoFuseCache.Store(p, autoCacheEntry{Entries: out, At: time.Now()})
 				_ = json.NewEncoder(w).Encode(map[string]any{"entries": out})
 				return
 			}
-		case <-time.After(1200 * time.Millisecond):
-			// FUSE readdir can block intermittently. Fall back to DB-derived structure.
-		}
-
-		// Fallback fast path for folders/subfolders from NZB tree.
-		// This is used only when FUSE readdir stalls.
-		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT path FROM nzb_imports ORDER BY imported_at DESC LIMIT 4000`)
-		if err != nil {
+			if v, ok := autoFuseCache.Load(p); ok {
+				ce := v.(autoCacheEntry)
+				_ = json.NewEncoder(w).Encode(map[string]any{"entries": ce.Entries, "cached": true, "stale_seconds": int(time.Since(ce.At).Seconds())})
+				return
+			}
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": rr.err.Error()})
+			return
+		case <-time.After(1200 * time.Millisecond):
+			if v, ok := autoFuseCache.Load(p); ok {
+				ce := v.(autoCacheEntry)
+				_ = json.NewEncoder(w).Encode(map[string]any{"entries": ce.Entries, "cached": true, "stale_seconds": int(time.Since(ce.At).Seconds())})
+				return
+			}
+			w.WriteHeader(http.StatusGatewayTimeout)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "fuse listing timeout"})
 			return
 		}
-		defer rows.Close()
-		nzbRoot := strings.TrimSpace(cfg.Watch.NZB.Dir)
-		if nzbRoot == "" {
-			nzbRoot = "/host/inbox/nzb"
-		}
-		nzbRoot = filepath.Clean(nzbRoot)
-
-		dirs := map[string]*autoEntry{}
-		files := map[string]*autoEntry{}
-		partsRel := strings.Split(rel, string(filepath.Separator))
-		depth := 0
-		if rel != "" {
-			depth = len(partsRel)
-		}
-		for rows.Next() {
-			var nzbPath string
-			if err := rows.Scan(&nzbPath); err != nil {
-				continue
-			}
-			nzbPath = filepath.Clean(nzbPath)
-			if !(nzbPath == nzbRoot || strings.HasPrefix(nzbPath, nzbRoot+string(filepath.Separator))) {
-				continue
-			}
-			relNZB, err := filepath.Rel(nzbRoot, nzbPath)
-			if err != nil {
-				continue
-			}
-			relNZB = filepath.Clean(relNZB)
-			if relNZB == "." || relNZB == "" {
-				continue
-			}
-			if relNZB == rel || !strings.HasPrefix(relNZB, rel+string(filepath.Separator)) {
-				continue
-			}
-			sub := strings.TrimPrefix(relNZB, rel+string(filepath.Separator))
-			parts := strings.Split(sub, string(filepath.Separator))
-			if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
-				continue
-			}
-			child := parts[0]
-			childRel := filepath.Join(rel, child)
-			full := filepath.Join(autoRoot, childRel)
-			if len(parts) > 1 {
-				dirs[child] = &autoEntry{Name: child, Path: full, IsDir: true}
-			} else if depth >= 3 {
-				// Never expose raw .nzb leaves in Biblioteca fallback.
-				name := child
-				if strings.HasSuffix(strings.ToLower(name), ".nzb") {
-					name = strings.TrimSuffix(name, filepath.Ext(name))
-				}
-				dirRel := filepath.Join(rel, name)
-				dirs[name] = &autoEntry{Name: name, Path: filepath.Join(autoRoot, dirRel), IsDir: true}
-			}
-		}
-		out := make([]*autoEntry, 0, len(dirs)+len(files))
-		for _, e := range dirs {
-			out = append(out, e)
-		}
-		for _, e := range files {
-			out = append(out, e)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"entries": out})
 	})
 
 	// GET /api/v1/library/auto/root
