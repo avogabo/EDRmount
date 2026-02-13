@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
 )
@@ -75,19 +76,88 @@ func (s *Server) registerLibraryAutoListRoutes() {
 			return
 		}
 
-		// FUSE-driven listing (as requested): list directory entries directly from mounted library-auto.
-		// Keep it lightweight: no per-entry stat calls to avoid stalls on big trees.
-		des, err := os.ReadDir(p)
+		// FUSE-driven listing first (as requested), with timeout guard.
+		type rdRes struct {
+			des []os.DirEntry
+			err error
+		}
+		rc := make(chan rdRes, 1)
+		go func() {
+			des, err := os.ReadDir(p)
+			rc <- rdRes{des: des, err: err}
+		}()
+		select {
+		case rr := <-rc:
+			if rr.err == nil {
+				out := make([]*autoEntry, 0, len(rr.des))
+				for _, de := range rr.des {
+					name := de.Name()
+					full := filepath.Join(p, name)
+					out = append(out, &autoEntry{Name: name, Path: full, IsDir: de.IsDir(), Size: 0, ModTime: ""})
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"entries": out})
+				return
+			}
+		case <-time.After(1200 * time.Millisecond):
+			// FUSE readdir can block intermittently. Fall back to DB-derived structure.
+		}
+
+		// Fallback fast path for folders/subfolders from NZB tree (no FUSE read).
+		rows, err := s.jobs.DB().SQL.QueryContext(r.Context(), `SELECT path FROM nzb_imports ORDER BY imported_at DESC LIMIT 3000`)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		out := make([]*autoEntry, 0, len(des))
-		for _, de := range des {
-			name := de.Name()
-			full := filepath.Join(p, name)
-			out = append(out, &autoEntry{Name: name, Path: full, IsDir: de.IsDir(), Size: 0, ModTime: ""})
+		defer rows.Close()
+		nzbRoot := strings.TrimSpace(cfg.Watch.NZB.Dir)
+		if nzbRoot == "" {
+			nzbRoot = "/host/inbox/nzb"
+		}
+		nzbRoot = filepath.Clean(nzbRoot)
+
+		dirs := map[string]*autoEntry{}
+		files := map[string]*autoEntry{}
+		for rows.Next() {
+			var nzbPath string
+			if err := rows.Scan(&nzbPath); err != nil {
+				continue
+			}
+			nzbPath = filepath.Clean(nzbPath)
+			if !(nzbPath == nzbRoot || strings.HasPrefix(nzbPath, nzbRoot+string(filepath.Separator))) {
+				continue
+			}
+			relNZB, err := filepath.Rel(nzbRoot, nzbPath)
+			if err != nil {
+				continue
+			}
+			relNZB = filepath.Clean(relNZB)
+			if relNZB == "." || relNZB == "" {
+				continue
+			}
+			if relNZB == rel || !strings.HasPrefix(relNZB, rel+string(filepath.Separator)) {
+				continue
+			}
+			sub := strings.TrimPrefix(relNZB, rel+string(filepath.Separator))
+			parts := strings.Split(sub, string(filepath.Separator))
+			if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+				continue
+			}
+			child := parts[0]
+			childRel := filepath.Join(rel, child)
+			full := filepath.Join(autoRoot, childRel)
+			if len(parts) > 1 {
+				dirs[child] = &autoEntry{Name: child, Path: full, IsDir: true}
+			} else {
+				files[child] = &autoEntry{Name: child, Path: full, IsDir: false}
+			}
+		}
+		out := make([]*autoEntry, 0, len(dirs)+len(files))
+		for _, e := range dirs {
+			out = append(out, e)
+		}
+		for _, e := range files {
+			out = append(out, e)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"entries": out})
 	})
