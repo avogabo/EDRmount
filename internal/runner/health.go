@@ -536,10 +536,9 @@ func copyFilePerm(src, dst string, perm os.FileMode) error {
 // healthUploadCleanNZB uploads a single media file and writes an NZB that contains ONLY the media.
 // This intentionally does NOT upload PAR2.
 func (r *Runner) healthUploadCleanNZB(ctx context.Context, jobID string, cfg config.Config, mediaPath string, outNZB string) error {
-	provider := strings.ToLower(strings.TrimSpace(cfg.Upload.Provider))
-	if provider == "" {
-		provider = "nyuu"
-	}
+	// Force ngpost for health re-upload: nyuu-generated NZB segment bytes can differ from decoded part size
+	// and break streaming range math (EOF). ngpost keeps compatible per-segment sizing for our pipeline.
+	provider := "ngpost"
 	ng := cfg.NgPost
 	if !ng.Enabled {
 		return errors.New("health: upload provider config missing (ngpost.enabled=false)")
