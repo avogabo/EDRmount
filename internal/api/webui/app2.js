@@ -1244,7 +1244,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Health
   if (document.getElementById('btnHealthScan')) {
-    document.getElementById('btnHealthScan').onclick = () => refreshHealthScan().catch(() => {});
+    document.getElementById('btnHealthScan').onclick = async () => {
+      try {
+        await apiPostJson('/api/v1/jobs/enqueue/health-scan', {});
+        setStatus('healthStatus', 'Scan encolado (queued)');
+        refreshHealthScan().catch(() => {});
+      } catch (e) {
+        setStatus('healthStatus', 'Error: ' + String(e));
+      }
+    };
   }
   if (document.getElementById('btnHealthRefresh')) {
     document.getElementById('btnHealthRefresh').onclick = () => refreshHealthScan().catch(() => {});

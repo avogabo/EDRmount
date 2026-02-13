@@ -121,6 +121,27 @@ func (s *Server) registerHealthRoutes() {
 		})
 	})
 
+	// Enqueue a full health scan job
+	s.mux.HandleFunc("/api/v1/jobs/enqueue/health-scan", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if s.jobs == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "jobs db not configured"})
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		job, err := s.jobs.Enqueue(r.Context(), jobs.TypeHealthScan, map[string]string{})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(job)
+	})
+
 	// Enqueue a repair job for a specific NZB path
 	s.mux.HandleFunc("/api/v1/jobs/enqueue/health-repair", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
