@@ -553,9 +553,17 @@ func (r *Runner) healthUploadCleanNZB(ctx context.Context, jobID string, cfg con
 
 		_ = r.jobs.AppendLog(ctx, jobID, "health: uploading repaired media (clean NZB, no PAR2)")
 		_ = r.jobs.AppendLog(ctx, jobID, sanitize(fmt.Sprintf("health: nyuu: %s %s", r.NyuuPath, strings.Join(args[:min(10, len(args))], " "))))
-		return runCommand(ctx, func(line string) {
+		err := runCommand(ctx, func(line string) {
 			_ = r.jobs.AppendLog(ctx, jobID, sanitize(line))
 		}, r.NyuuPath, args...)
+		if err == nil {
+			return nil
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "illegal instruction") {
+			_ = r.jobs.AppendLog(ctx, jobID, "health: nyuu illegal instruction; fallback to ngpost")
+		} else {
+			return err
+		}
 	}
 
 	// ngpost
