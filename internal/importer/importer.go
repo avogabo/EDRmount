@@ -10,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
+	"github.com/gaby/EDRmount/internal/library"
+	"github.com/gaby/EDRmount/internal/meta/tmdb"
 	"github.com/gaby/EDRmount/internal/nzb"
 	"github.com/gaby/EDRmount/internal/subject"
 	"github.com/google/uuid"
@@ -194,6 +197,102 @@ func seedManualFromNZB(ctx context.Context, tx *sql.Tx, importID, nzbPath string
 		if _, err := tx.ExecContext(ctx, `INSERT INTO manual_items(id,dir_id,label,import_id,file_idx) VALUES(?,?,?,?,?)`, itemID, leaf, fn, importID, idx); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// EnrichLibraryResolvedByPath resolves/stores library metadata for fast FUSE path building.
+func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.Config, nzbPath string) error {
+	db := i.jobs.DB().SQL
+	var importID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM nzb_imports WHERE path=? ORDER BY imported_at DESC LIMIT 1`, nzbPath).Scan(&importID); err != nil {
+		return err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT idx, COALESCE(filename,''), subject FROM nzb_files WHERE import_id=? ORDER BY idx`, importID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	res := library.NewResolver(cfg)
+	l := cfg.Library.Defaults()
+	now := time.Now().Unix()
+	for rows.Next() {
+		var idx int
+		var fn, subj string
+		if err := rows.Scan(&idx, &fn, &subj); err != nil {
+			continue
+		}
+		name := strings.TrimSpace(fn)
+		if name == "" {
+			name = filepath.Base(subj)
+		}
+		g := library.GuessFromFilename(name)
+		kind := "movie"
+		title := g.Title
+		year := g.Year
+		quality := g.Quality
+		tmdbID := 0
+		seriesStatus := l.EmisionFolder
+		season := g.Season
+		episode := g.Episode
+		episodeTitle := "Episode"
+		if g.IsSeries {
+			kind = "series"
+			if tv, ok := res.ResolveTV(ctx, title, year); ok {
+				if strings.TrimSpace(tv.Name) != "" {
+					title = tv.Name
+				}
+				if y := tv.FirstAirYear(); y > 0 {
+					year = y
+				}
+				tmdbID = tv.ID
+				b := tmdb.MapTVStatusToBucket(tv.Status)
+				if b == tmdb.SeriesBucketFinalizada {
+					seriesStatus = l.FinalizadasFolder
+				} else {
+					seriesStatus = l.EmisionFolder
+				}
+				if season > 0 && episode > 0 {
+					if ep, ok := res.ResolveEpisodeTitle(ctx, tv.ID, season, episode); ok && strings.TrimSpace(ep) != "" {
+						episodeTitle = ep
+					}
+				}
+			}
+		} else {
+			if mv, ok := res.ResolveMovie(ctx, title, year); ok {
+				if strings.TrimSpace(mv.Title) != "" {
+					title = mv.Title
+				}
+				if y := mv.ReleaseYear(); y > 0 {
+					year = y
+				}
+				tmdbID = mv.ID
+			}
+		}
+		if strings.TrimSpace(title) == "" {
+			title = g.Title
+		}
+		if strings.TrimSpace(quality) == "" {
+			quality = g.Quality
+		}
+		if strings.TrimSpace(episodeTitle) == "" {
+			episodeTitle = "Episode"
+		}
+		_, _ = db.ExecContext(ctx, `
+			INSERT INTO library_resolved(import_id,file_idx,kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+			ON CONFLICT(import_id,file_idx) DO UPDATE SET
+			  kind=excluded.kind,
+			  title=excluded.title,
+			  year=excluded.year,
+			  quality=excluded.quality,
+			  tmdb_id=excluded.tmdb_id,
+			  series_status=excluded.series_status,
+			  season=excluded.season,
+			  episode=excluded.episode,
+			  episode_title=excluded.episode_title,
+			  updated_at=excluded.updated_at
+		`, importID, idx, kind, title, year, quality, tmdbID, seriesStatus, season, episode, episodeTitle, now)
 	}
 	return nil
 }

@@ -198,6 +198,39 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 		"season":  g.Season,
 		"episode": g.Episode,
 	}
+	// Prefer resolved metadata produced at import-time.
+	{
+		var kind, title, q, status, epTitle string
+		var y, tmdbID, season, episode int
+		err := n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT kind,title,year,quality,tmdb_id,series_status,season,episode,episode_title FROM library_resolved WHERE import_id=? AND file_idx=?`, row.ImportID, row.Idx).Scan(&kind, &title, &y, &q, &tmdbID, &status, &season, &episode, &epTitle)
+		if err == nil {
+			if strings.TrimSpace(title) != "" {
+				g.Title = title
+			}
+			if y > 0 {
+				nums["year"] = y
+			}
+			if strings.TrimSpace(q) != "" {
+				vars["quality"] = q
+			}
+			if season > 0 {
+				nums["season"] = season
+			}
+			if episode > 0 {
+				nums["episode"] = episode
+			}
+			if strings.TrimSpace(epTitle) != "" {
+				vars["episode_title"] = epTitle
+			}
+			if strings.TrimSpace(status) != "" {
+				vars["series_status"] = status
+			}
+			vars["tmdb_id"] = fmt.Sprintf("%d", tmdbID)
+			if strings.EqualFold(kind, "series") {
+				g.IsSeries = true
+			}
+		}
+	}
 
 	if !g.IsSeries {
 		// Fast path for FUSE listing: avoid external resolvers (TMDB/FileBot) on each directory read.
@@ -230,12 +263,17 @@ func (n *libDir) buildPath(ctx context.Context, row libRow) string {
 	// Series (fast path): avoid external resolvers on each directory listing.
 	seriesName := g.Title
 	seriesTMDB := 0
-	bucket := l.EmisionFolder
+	bucket := vars["series_status"]
+	if strings.TrimSpace(bucket) == "" {
+		bucket = l.EmisionFolder
+	}
 	if _, ok := vars["episode_title"]; !ok {
 		vars["episode_title"] = "Episode"
 	}
 	vars["series"] = seriesName
-	vars["tmdb_id"] = fmt.Sprintf("%d", seriesTMDB)
+	if vars["tmdb_id"] == "" {
+		vars["tmdb_id"] = fmt.Sprintf("%d", seriesTMDB)
+	}
 	vars["series_status"] = bucket
 
 	baseDir := library.CleanPath(library.Render(l.SeriesDirTemplate, vars, nums))

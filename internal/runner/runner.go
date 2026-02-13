@@ -84,6 +84,10 @@ func (r *Runner) runImport(ctx context.Context, j *jobs.Job) {
 	}
 	_ = json.Unmarshal(j.Payload, &p)
 
+	cfg := config.Default()
+	if r.GetConfig != nil {
+		cfg = r.GetConfig()
+	}
 	imp := importer.New(r.jobs)
 	files, bytes, err := imp.ImportNZB(ctx, j.ID, p.Path)
 	if err != nil {
@@ -93,6 +97,9 @@ func (r *Runner) runImport(ctx context.Context, j *jobs.Job) {
 		return
 	}
 	_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("imported NZB: files=%d total_bytes=%d", files, bytes))
+	if err := imp.EnrichLibraryResolvedByPath(ctx, cfg, p.Path); err != nil {
+		_ = r.jobs.AppendLog(ctx, j.ID, "library_resolved: WARN: "+err.Error())
+	}
 
 	// Optional: ask Plex to refresh only the new item(s) in library-auto.
 	if r.GetConfig != nil {

@@ -89,6 +89,7 @@ func (s *Server) registerCatalogRoutes() {
 			`DELETE FROM nzb_files WHERE import_id=?`,
 			`DELETE FROM library_overrides WHERE import_id=?`,
 			`DELETE FROM library_review_dismissed WHERE import_id=?`,
+			`DELETE FROM library_resolved WHERE import_id=?`,
 			`DELETE FROM manual_items WHERE import_id=?`,
 			`DELETE FROM nzb_imports WHERE id=?`,
 		}

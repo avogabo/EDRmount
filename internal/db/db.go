@@ -140,6 +140,23 @@ func (d *DB) migrate() error {
 			PRIMARY KEY(import_id, file_idx)
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS library_resolved (
+			import_id TEXT NOT NULL,
+			file_idx INTEGER NOT NULL,
+			kind TEXT NOT NULL,
+			title TEXT NOT NULL,
+			year INTEGER NOT NULL,
+			quality TEXT NOT NULL,
+			tmdb_id INTEGER NOT NULL,
+			series_status TEXT NOT NULL,
+			season INTEGER NOT NULL,
+			episode INTEGER NOT NULL,
+			episode_title TEXT NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY(import_id, file_idx)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_library_resolved_import ON library_resolved(import_id);`,
+
 		// Health scanning state
 		`CREATE TABLE IF NOT EXISTS health_nzb_state (
 			path TEXT PRIMARY KEY,
