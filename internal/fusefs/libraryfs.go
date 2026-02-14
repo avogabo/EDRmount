@@ -111,8 +111,8 @@ func (n *libFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 	}
 	n.mu.Unlock()
 
-	// Read-ahead window to reduce round trips on sequential playback startup.
-	window := int64(4 * 1024 * 1024) // 4MiB
+	// Conservative read-ahead to avoid bursty segment storms on some clients.
+	window := int64(1 * 1024 * 1024) // 1MiB
 	if want > window {
 		window = want
 	}
@@ -123,7 +123,14 @@ func (n *libFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 
 	st := n.fs.getStreamer()
 	buf := &bytes.Buffer{}
-	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, fetchEnd, buf, n.fs.Cfg.Download.PrefetchSegments+8); err != nil {
+	prefetch := n.fs.Cfg.Download.PrefetchSegments
+	if prefetch > 2 {
+		prefetch = 2
+	}
+	if prefetch < 0 {
+		prefetch = 0
+	}
+	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, fetchEnd, buf, prefetch); err != nil {
 		if errors.Is(err, io.EOF) {
 			resp.Data = nil
 			return nil
