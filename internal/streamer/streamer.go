@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
@@ -22,6 +23,7 @@ type Streamer struct {
 	cacheDir string
 	pool     *nntp.Pool
 	maxCache int64
+	segLocks sync.Map // cachePath -> *sync.Mutex
 }
 
 func New(cfg config.DownloadProvider, j *jobs.Store, cacheDir string, maxCacheBytes int64) *Streamer {

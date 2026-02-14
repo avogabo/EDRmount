@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/cache"
@@ -62,6 +63,17 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return "", err
+	}
+
+	// Single-flight per segment cache path to avoid concurrent writers racing on .part/.rename.
+	lAny, _ := s.segLocks.LoadOrStore(p, &sync.Mutex{})
+	l := lAny.(*sync.Mutex)
+	l.Lock()
+	defer l.Unlock()
+
+	// Re-check after lock (another goroutine may have completed it).
+	if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+		return p, nil
 	}
 
 	// Download + decode (reuse NNTP connections)
