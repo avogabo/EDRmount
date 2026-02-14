@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"bazil.org/fuse"
@@ -29,9 +30,21 @@ import (
 type ManualFS struct {
 	Cfg  config.Config
 	Jobs *jobs.Store
+
+	streamMu sync.Mutex
+	stream   *streamer.Streamer
 }
 
 func (m *ManualFS) Root() (fs.Node, error) { return &manualRawRoot{fs: m, rel: ""}, nil }
+
+func (m *ManualFS) getStreamer() *streamer.Streamer {
+	m.streamMu.Lock()
+	defer m.streamMu.Unlock()
+	if m.stream == nil {
+		m.stream = streamer.New(m.Cfg.Download, m.Jobs, m.Cfg.Paths.CacheDir, m.Cfg.Paths.CacheMaxBytes)
+	}
+	return m.stream
+}
 
 // manualRawRoot exposes a RAW-like directory tree based on nzb_imports.path.
 // For each NZB file, we expose a virtual folder named like the NZB (without .nzb)
@@ -512,7 +525,7 @@ func (n *manualFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse
 		end = n.size - 1
 	}
 
-	st := streamer.New(n.fs.Cfg.Download, n.fs.Jobs, n.fs.Cfg.Paths.CacheDir, n.fs.Cfg.Paths.CacheMaxBytes)
+	st := n.fs.getStreamer()
 	buf := &bytes.Buffer{}
 	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.realName, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
 		log.Printf("fuse manual read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)

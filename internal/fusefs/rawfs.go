@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"bazil.org/fuse"
@@ -27,10 +28,22 @@ import (
 type RawFS struct {
 	Cfg  config.Config
 	Jobs *jobs.Store
+
+	streamMu sync.Mutex
+	stream   *streamer.Streamer
 }
 
 func (r *RawFS) Root() (fs.Node, error) {
 	return &rawRoot{fs: r}, nil
+}
+
+func (r *RawFS) getStreamer() *streamer.Streamer {
+	r.streamMu.Lock()
+	defer r.streamMu.Unlock()
+	if r.stream == nil {
+		r.stream = streamer.New(r.Cfg.Download, r.Jobs, r.Cfg.Paths.CacheDir, r.Cfg.Paths.CacheMaxBytes)
+	}
+	return r.stream
 }
 
 type rawRoot struct{ fs *RawFS }
@@ -207,7 +220,7 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		end = n.size - 1
 	}
 
-	st := streamer.New(n.fs.Cfg.Download, n.fs.Jobs, n.fs.Cfg.Paths.CacheDir, n.fs.Cfg.Paths.CacheMaxBytes)
+	st := n.fs.getStreamer()
 	buf := &bytes.Buffer{}
 	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
 		log.Printf("fuse read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
