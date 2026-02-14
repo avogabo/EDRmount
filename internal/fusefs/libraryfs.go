@@ -62,6 +62,10 @@ type libFile struct {
 	fileIdx  int
 	name     string
 	size     int64
+
+	mu         sync.Mutex
+	cacheStart int64
+	cacheData  []byte
 }
 
 func (n *libFile) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -79,18 +83,47 @@ func (n *libFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		return fuse.EIO
 	}
 	start := int64(req.Offset)
-	end := start + int64(req.Size) - 1
 	if start >= n.size {
 		resp.Data = nil
 		return nil
 	}
+	want := int64(req.Size)
+	if want <= 0 {
+		resp.Data = nil
+		return nil
+	}
+	end := start + want - 1
 	if end >= n.size {
 		end = n.size - 1
 	}
 
+	// Hot read cache per open file handle: helps media players that read sequentially in small chunks.
+	n.mu.Lock()
+	if len(n.cacheData) > 0 {
+		cs := n.cacheStart
+		ce := cs + int64(len(n.cacheData)) - 1
+		if start >= cs && end <= ce {
+			off := start - cs
+			resp.Data = append([]byte(nil), n.cacheData[off:off+(end-start)+1]...)
+			n.mu.Unlock()
+			return nil
+		}
+	}
+	n.mu.Unlock()
+
+	// Read-ahead window to reduce round trips on sequential playback startup.
+	window := int64(4 * 1024 * 1024) // 4MiB
+	if want > window {
+		window = want
+	}
+	fetchEnd := start + window - 1
+	if fetchEnd >= n.size {
+		fetchEnd = n.size - 1
+	}
+
 	st := n.fs.getStreamer()
 	buf := &bytes.Buffer{}
-	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
+	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, fetchEnd, buf, n.fs.Cfg.Download.PrefetchSegments+8); err != nil {
 		if errors.Is(err, io.EOF) {
 			resp.Data = nil
 			return nil
@@ -98,7 +131,18 @@ func (n *libFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		log.Printf("fuse library read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
 		return fuse.EIO
 	}
-	resp.Data = buf.Bytes()
+	all := buf.Bytes()
+	n.mu.Lock()
+	n.cacheStart = start
+	n.cacheData = append(n.cacheData[:0], all...)
+	n.mu.Unlock()
+
+	need := (end - start) + 1
+	if int64(len(all)) < need {
+		resp.Data = append([]byte(nil), all...)
+		return nil
+	}
+	resp.Data = append([]byte(nil), all[:need]...)
 	return nil
 }
 
