@@ -77,4 +77,20 @@ func (s *Server) registerRawRoutes() {
 		}
 		_ = json.NewEncoder(w).Encode(out)
 	})
+
+	// GET|HEAD /api/v1/play/{importId}/{fileIdx}
+	// Optional query param: ?filename=<name> (only used for cache naming/content-disposition)
+	s.mux.HandleFunc("/api/v1/play/", func(w http.ResponseWriter, r *http.Request) {
+		if s.jobs == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "db not configured"})
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		s.handlePlayStream(w, r)
+	})
 }

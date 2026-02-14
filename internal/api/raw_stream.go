@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,6 +148,149 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Multi-range: we currently require full-file cache (for simplicity).
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusPartialContent)
+		return
+	}
+	localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	f, err := os.Open(localPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	defer f.Close()
+	_ = serveMultiRangeFromFile(w, r, f, size, "application/octet-stream", mr)
+}
+
+func (s *Server) handlePlayStream(w http.ResponseWriter, r *http.Request) {
+	// /api/v1/play/{importId}/{fileIdx}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/play/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "expected /api/v1/play/{importId}/{fileIdx}"})
+		return
+	}
+	importID := strings.TrimSpace(parts[0])
+	fileIdx, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if importID == "" || err != nil || fileIdx < 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid importId or fileIdx"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+
+	var (
+		dbFilename sql.NullString
+		subj       string
+		size       int64
+	)
+	err = s.jobs.DB().SQL.QueryRowContext(ctx, `SELECT filename,subject,total_bytes FROM nzb_files WHERE import_id=? AND idx=? LIMIT 1`, importID, fileIdx).
+		Scan(&dbFilename, &subj, &size)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "file index not found in import"})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	if size <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid file size"})
+		return
+	}
+
+	filename := strings.TrimSpace(r.URL.Query().Get("filename"))
+	if filename == "" {
+		if dbFilename.Valid && strings.TrimSpace(dbFilename.String) != "" {
+			filename = strings.TrimSpace(dbFilename.String)
+		} else if fn, ok := subject.FilenameFromSubject(subj); ok {
+			filename = fn
+		} else {
+			filename = fmt.Sprintf("file_%04d.bin", fileIdx)
+		}
+	}
+
+	log.Printf("PLAY start import=%s fileIdx=%d method=%s range=%q ua=%q remote=%s", importID, fileIdx, r.Method, r.Header.Get("Range"), r.UserAgent(), r.RemoteAddr)
+	defer log.Printf("PLAY end import=%s fileIdx=%d method=%s", importID, fileIdx, r.Method)
+
+	cfg := s.Config()
+	st := streamer.New(cfg.Download, s.jobs, cfg.Paths.CacheDir, cfg.Paths.CacheMaxBytes)
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	w.Header().Set("X-EDR-Play", "1")
+	w.Header().Set("X-EDR-Import-ID", importID)
+	w.Header().Set("X-EDR-File-Idx", strconv.Itoa(fileIdx))
+
+	mr, perr := parseRanges(r.Header.Get("Range"), size)
+	if perr != nil {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+
+	if mr == nil {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		f, err := os.Open(localPath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		defer f.Close()
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, f)
+		return
+	}
+
+	if len(mr.Ranges) == 1 {
+		br := mr.Ranges[0]
+		length := (br.End - br.Start) + 1
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
+		w.WriteHeader(http.StatusPartialContent)
+		if r.Method == http.MethodHead {
+			return
+		}
+		prefetchSegs := cfg.Download.PrefetchSegments
+		if prefetchSegs < 0 {
+			prefetchSegs = 0
+		}
+		_ = st.StreamRange(ctx, importID, fileIdx, filename, br.Start, br.End, w, prefetchSegs)
+		return
+	}
+
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusPartialContent)
 		return
