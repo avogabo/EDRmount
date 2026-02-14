@@ -132,18 +132,39 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	if len(mr.Ranges) == 1 {
 		br := mr.Ranges[0]
 		length := (br.End - br.Start) + 1
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
+			w.WriteHeader(http.StatusPartialContent)
+			return
+		}
+
+		// Pre-materialize to avoid sending 206 headers if backend fetch fails.
+		localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		f, err := os.Open(localPath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		defer f.Close()
+		if _, err := f.Seek(br.Start, io.SeekStart); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
 		w.WriteHeader(http.StatusPartialContent)
-		if r.Method == http.MethodHead {
-			return
-		}
-		cfg := s.Config()
-		prefetchSegs := cfg.Download.PrefetchSegments
-		if prefetchSegs < 0 {
-			prefetchSegs = 0
-		}
-		_ = st.StreamRange(ctx, importID, fileIdx, filename, br.Start, br.End, w, prefetchSegs)
+		_, _ = io.CopyN(w, f, length)
 		return
 	}
 
@@ -277,17 +298,40 @@ func (s *Server) handlePlayStream(w http.ResponseWriter, r *http.Request) {
 	if len(mr.Ranges) == 1 {
 		br := mr.Ranges[0]
 		length := (br.End - br.Start) + 1
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
+			w.WriteHeader(http.StatusPartialContent)
+			return
+		}
+
+		// Pre-materialize to avoid returning 206 when backend cannot provide bytes.
+		localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
+		if err != nil {
+			log.Printf("PLAY stream preflight failed import=%s fileIdx=%d err=%v", importID, fileIdx, err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		f, err := os.Open(localPath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		defer f.Close()
+		if _, err := f.Seek(br.Start, io.SeekStart); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
 		w.WriteHeader(http.StatusPartialContent)
-		if r.Method == http.MethodHead {
-			return
-		}
-		prefetchSegs := cfg.Download.PrefetchSegments
-		if prefetchSegs < 0 {
-			prefetchSegs = 0
-		}
-		_ = st.StreamRange(ctx, importID, fileIdx, filename, br.Start, br.End, w, prefetchSegs)
+		_, _ = io.CopyN(w, f, length)
 		return
 	}
 
