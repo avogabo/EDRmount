@@ -101,6 +101,11 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 
 	// No Range: ensure full file cached and serve it.
 	if mr == nil {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -116,7 +121,6 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer f.Close()
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.Copy(w, f)
 		return
@@ -129,6 +133,9 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", length))
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", br.Start, br.End, size))
 		w.WriteHeader(http.StatusPartialContent)
+		if r.Method == http.MethodHead {
+			return
+		}
 		cfg := s.Config()
 		prefetchSegs := cfg.Download.PrefetchSegments
 		if prefetchSegs < 0 {
@@ -139,6 +146,10 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Multi-range: we currently require full-file cache (for simplicity).
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusPartialContent)
+		return
+	}
 	localPath, err := st.EnsureFile(ctx, importID, fileIdx, filename)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

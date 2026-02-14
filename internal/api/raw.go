@@ -26,7 +26,7 @@ func (s *Server) registerRawRoutes() {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "db not configured"})
 			return
 		}
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
