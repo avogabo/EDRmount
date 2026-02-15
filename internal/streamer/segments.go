@@ -110,6 +110,7 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 }
 
 // StreamRange writes exactly [start,end] inclusive from the logical file.
+// El parámetro prefetch indica cuántos segmentos adicionales descargar anticipadamente.
 func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int, filename string, start, end int64, w io.Writer, prefetch int) error {
 	// Load segments from DB
 	qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
@@ -143,8 +144,27 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	// Build range mapping using actual cached/decoded segment file sizes.
 	var off int64 = 0
 	writtenAny := false
+	
+	// Canal para prefetch concurrente
+	prefetchCh := make(chan SegmentLocator, prefetch)
+	prefetchErrCh := make(chan error, prefetch)
+	
 	for i := 0; i < len(layout.Segs); i++ {
 		seg := layout.Segs[i]
+		
+		// Iniciar prefetch de segmentos futuros en paralelo
+		if prefetch > 0 && i+1 < len(layout.Segs) {
+			for j := 1; j <= prefetch && i+j < len(layout.Segs); j++ {
+				nextSeg := layout.Segs[i+j]
+				go func(ns SegmentLocator) {
+					ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					defer cancel()
+					_, err := s.ensureSegment(ctx2, ns)
+					prefetchErrCh <- err
+				}(nextSeg)
+			}
+		}
+		
 		p, err := s.ensureSegment(ctx, seg)
 		if err != nil {
 			return err
@@ -193,22 +213,19 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 		if sliceEnd == end {
 			break
 		}
-
-		// best-effort prefetch next segments
-		if prefetch > 0 {
-			for j := 1; j <= prefetch; j++ {
-				k := i + j
-				if k >= 0 && k < len(layout.Segs) {
-					next := layout.Segs[k]
-					go func() {
-						ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-						defer cancel()
-						_, _ = s.ensureSegment(ctx2, next)
-					}()
-				}
+	}
+	
+	// Consumir errores de prefetch (no bloqueantes)
+	go func() {
+		for i := 0; i < prefetch && i < len(layout.Segs); i++ {
+			select {
+			case <-prefetchErrCh:
+			case <-time.After(100 * time.Millisecond):
+				return
 			}
 		}
-	}
+	}()
+	
 	if !writtenAny {
 		// Requested range starts beyond currently addressable decoded data.
 		// For FUSE readers this should behave like EOF (empty read), not I/O error.
