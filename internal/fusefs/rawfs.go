@@ -14,6 +14,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
@@ -21,10 +22,70 @@ import (
 	"github.com/gaby/EDRmount/internal/subject"
 )
 
+// chunkCache almacena chunks de datos en memoria para evitar re-descargas
+type chunkCache struct {
+	mu     sync.RWMutex
+	chunks map[string][]byte // key: "importID:fileIdx:offset"
+	size   int64
+	maxSize int64
+}
+
+func newChunkCache(maxSize int64) *chunkCache {
+	return &chunkCache{
+		chunks:  make(map[string][]byte),
+		maxSize: maxSize,
+	}
+}
+
+func (c *chunkCache) key(importID string, fileIdx int, offset int64) string {
+	return fmt.Sprintf("%s:%d:%d", importID, fileIdx, offset)
+}
+
+func (c *chunkCache) get(importID string, fileIdx int, offset int64, size int) ([]byte, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	
+	key := c.key(importID, fileIdx, offset)
+	data, ok := c.chunks[key]
+	if !ok || len(data) < size {
+		return nil, false
+	}
+	return data[:size], true
+}
+
+func (c *chunkCache) set(importID string, fileIdx int, offset int64, data []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	// Si estamos por encima del límite, limpiar entradas antiguas
+	if c.size+int64(len(data)) > c.maxSize && len(c.chunks) > 0 {
+		// Eliminar la mitad de las entradas (simple LRU aproximado)
+		for k, v := range c.chunks {
+			delete(c.chunks, k)
+			c.size -= int64(len(v))
+			if c.size < c.maxSize/2 {
+				break
+			}
+		}
+	}
+	
+	key := c.key(importID, fileIdx, offset)
+	if old, exists := c.chunks[key]; exists {
+		c.size -= int64(len(old))
+	}
+	c.chunks[key] = data
+	c.size += int64(len(data))
+}
+
+// Global chunk cache (100MB por defecto)
+var globalChunkCache = newChunkCache(100 * 1024 * 1024)
+
+// singleflight group para deduplicar descargas concurrentes
+var fetchGroup singleflight.Group
+
 // RawFS exposes a read-only filesystem:
 //   /raw/<importId>/<filename>
 // where <filename> comes from NZB subject parsing (best-effort).
-
 type RawFS struct {
 	Cfg  config.Config
 	Jobs *jobs.Store
@@ -203,6 +264,12 @@ func max64(a, b int64) int64 {
 	return b
 }
 
+// chunkSize define el tamaño de cada chunk en memoria (1MB)
+const chunkSize = 1024 * 1024
+
+// minReadSize define el tamaño mínimo de lectura (4MB para mejor throughput)
+const minReadSize = 4 * 1024 * 1024
+
 func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	if req.Offset < 0 {
 		return fuse.EIO
@@ -210,8 +277,15 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 	if n.size <= 0 {
 		return fuse.EIO
 	}
+
 	start := int64(req.Offset)
-	end := start + int64(req.Size) - 1
+	// Aumentar el tamaño de lectura para mejor throughput
+	requestedSize := int64(req.Size)
+	if requestedSize < minReadSize {
+		requestedSize = minReadSize
+	}
+	
+	end := start + requestedSize - 1
 	if start >= n.size {
 		resp.Data = nil
 		return nil
@@ -220,13 +294,53 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		end = n.size - 1
 	}
 
+	// Intentar leer desde caché primero
+	cacheKey := globalChunkCache.key(n.importID, n.fileIdx, start)
+	if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, start, int(end-start+1)); ok {
+		// Ajustar al tamaño real solicitado
+		if len(cachedData) > req.Size {
+			resp.Data = cachedData[:req.Size]
+		} else {
+			resp.Data = cachedData
+		}
+		return nil
+	}
+
 	st := n.fs.getStreamer()
-	buf := &bytes.Buffer{}
-	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
+	
+	// Usar singleflight para deduplicar descargas concurrentes del mismo rango
+	result, err, _ := fetchGroup.Do(cacheKey, func() (interface{}, error) {
+		buf := &bytes.Buffer{}
+		// Aumentar prefetch a 30 segmentos para mejor rendimiento
+		if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, 30); err != nil {
+			return nil, err
+		}
+		data := buf.Bytes()
+		
+		// Guardar en caché
+		if len(data) > 0 {
+			globalChunkCache.set(n.importID, n.fileIdx, start, data)
+		}
+		return data, nil
+	})
+
+	if err != nil {
 		log.Printf("fuse read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
 		return fuse.EIO
 	}
-	resp.Data = buf.Bytes()
+
+	data := result.([]byte)
+	if len(data) == 0 {
+		resp.Data = nil
+		return nil
+	}
+
+	// Ajustar al tamaño real solicitado
+	if len(data) > req.Size {
+		resp.Data = data[:req.Size]
+	} else {
+		resp.Data = data
+	}
 	return nil
 }
 
