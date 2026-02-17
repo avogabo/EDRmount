@@ -67,6 +67,30 @@ func (r *Resolver) ResolveMovie(ctx context.Context, title string, year int) (tm
 		}
 	}
 	if len(res) == 0 {
+		// Retry without year constraint (some releases have noisy/wrong year in filename).
+		for _, q := range searchTitles {
+			out, err := r.c.SearchMovie(cctx, q, 0)
+			if err == nil && len(out) > 0 {
+				res = out
+				break
+			}
+		}
+	}
+	if len(res) == 0 {
+		for _, q := range fallbackMovieQueries(baseTitle) {
+			out, err := r.c.SearchMovie(cctx, q, year)
+			if err == nil && len(out) > 0 {
+				res = out
+				break
+			}
+			out, err = r.c.SearchMovie(cctx, q, 0)
+			if err == nil && len(out) > 0 {
+				res = out
+				break
+			}
+		}
+	}
+	if len(res) == 0 {
 		return tmdb.MovieSearchResult{}, false
 	}
 
@@ -116,8 +140,23 @@ func (r *Resolver) ResolveTV(ctx context.Context, title string, year int) (tmdb.
 		}
 	}
 	if len(res) == 0 {
+		// Retry without year constraint to avoid false negatives from noisy filenames.
+		for _, q := range searchTitles {
+			out, err := r.c.SearchTV(cctx, q, 0)
+			if err == nil && len(out) > 0 {
+				res = out
+				break
+			}
+		}
+	}
+	if len(res) == 0 {
 		for _, q := range fallbackTVQueries(baseTitle) {
 			out, err := r.c.SearchTV(cctx, q, year)
+			if err == nil && len(out) > 0 {
+				res = out
+				break
+			}
+			out, err = r.c.SearchTV(cctx, q, 0)
 			if err == nil && len(out) > 0 {
 				res = out
 				break
@@ -221,6 +260,34 @@ func fallbackTVQueries(title string) []string {
 			out = append(out, q)
 		}
 		if len(out) >= 3 {
+			break
+		}
+	}
+	return out
+}
+
+func fallbackMovieQueries(title string) []string {
+	low := strings.ToLower(strings.TrimSpace(title))
+	if low == "" {
+		return nil
+	}
+	parts := strings.Fields(regexp.MustCompile(`[^a-z0-9 ]+`).ReplaceAllString(low, " "))
+	stop := map[string]bool{
+		"the": true, "and": true, "with": true, "from": true, "for": true,
+		"el": true, "la": true, "los": true, "las": true, "de": true, "del": true, "en": true, "y": true,
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, 4)
+	for _, p := range parts {
+		if len(p) < 4 || stop[p] {
+			continue
+		}
+		q := strings.ToUpper(p[:1]) + p[1:]
+		if !seen[q] {
+			seen[q] = true
+			out = append(out, q)
+		}
+		if len(out) >= 4 {
 			break
 		}
 	}
