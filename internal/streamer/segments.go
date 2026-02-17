@@ -141,25 +141,38 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	}
 
 	// IMPORTANT: NZB segment bytes are often ENCODED sizes and may not match decoded payload sizes.
-	// Build range mapping using actual cached/decoded segment file sizes.
-	var off int64 = 0
+	// We use encoded offsets only as a fast index hint (start near requested range),
+	// then stream using real decoded segment sizes from cache/files.
 	writtenAny := false
 
-	// Canal para prefetch concurrente
-	prefetchErrCh := make(chan error, prefetch)
+	startIdx := sort.Search(len(layout.Segs), func(i int) bool {
+		return layout.Offsets[i]+layout.Segs[i].Bytes > start
+	})
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	// Small backtrack window to absorb encoded-vs-decoded drift.
+	if startIdx > 2 {
+		startIdx -= 2
+	} else {
+		startIdx = 0
+	}
+	off := int64(0)
+	if startIdx < len(layout.Offsets) {
+		off = layout.Offsets[startIdx]
+	}
 
-	for i := 0; i < len(layout.Segs); i++ {
+	for i := startIdx; i < len(layout.Segs); i++ {
 		seg := layout.Segs[i]
 
-		// Iniciar prefetch de segmentos futuros en paralelo
+		// Prefetch best-effort: do not block on errors/results.
 		if prefetch > 0 && i+1 < len(layout.Segs) {
 			for j := 1; j <= prefetch && i+j < len(layout.Segs); j++ {
 				nextSeg := layout.Segs[i+j]
 				go func(ns SegmentLocator) {
 					ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 					defer cancel()
-					_, err := s.ensureSegment(ctx2, ns)
-					prefetchErrCh <- err
+					_, _ = s.ensureSegment(ctx2, ns)
 				}(nextSeg)
 			}
 		}
@@ -213,17 +226,6 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 			break
 		}
 	}
-
-	// Consumir errores de prefetch (no bloqueantes)
-	go func() {
-		for i := 0; i < prefetch && i < len(layout.Segs); i++ {
-			select {
-			case <-prefetchErrCh:
-			case <-time.After(100 * time.Millisecond):
-				return
-			}
-		}
-	}()
 
 	if !writtenAny {
 		// Requested range starts beyond currently addressable decoded data.
