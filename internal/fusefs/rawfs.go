@@ -24,9 +24,9 @@ import (
 
 // chunkCache almacena chunks de datos en memoria para evitar re-descargas
 type chunkCache struct {
-	mu     sync.RWMutex
-	chunks map[string][]byte // key: "importID:fileIdx:offset"
-	size   int64
+	mu      sync.RWMutex
+	chunks  map[string][]byte // key: "importID:fileIdx:offset"
+	size    int64
 	maxSize int64
 }
 
@@ -44,7 +44,7 @@ func (c *chunkCache) key(importID string, fileIdx int, offset int64) string {
 func (c *chunkCache) get(importID string, fileIdx int, offset int64, size int) ([]byte, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	key := c.key(importID, fileIdx, offset)
 	data, ok := c.chunks[key]
 	if !ok || len(data) < size {
@@ -56,7 +56,7 @@ func (c *chunkCache) get(importID string, fileIdx int, offset int64, size int) (
 func (c *chunkCache) set(importID string, fileIdx int, offset int64, data []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	// Si estamos por encima del límite, limpiar entradas antiguas
 	if c.size+int64(len(data)) > c.maxSize && len(c.chunks) > 0 {
 		// Eliminar la mitad de las entradas (simple LRU aproximado)
@@ -68,7 +68,7 @@ func (c *chunkCache) set(importID string, fileIdx int, offset int64, data []byte
 			}
 		}
 	}
-	
+
 	key := c.key(importID, fileIdx, offset)
 	if old, exists := c.chunks[key]; exists {
 		c.size -= int64(len(old))
@@ -84,7 +84,9 @@ var globalChunkCache = newChunkCache(100 * 1024 * 1024)
 var fetchGroup singleflight.Group
 
 // RawFS exposes a read-only filesystem:
-//   /raw/<importId>/<filename>
+//
+//	/raw/<importId>/<filename>
+//
 // where <filename> comes from NZB subject parsing (best-effort).
 type RawFS struct {
 	Cfg  config.Config
@@ -284,7 +286,7 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 	if requestedSize < minReadSize {
 		requestedSize = minReadSize
 	}
-	
+
 	end := start + requestedSize - 1
 	if start >= n.size {
 		resp.Data = nil
@@ -307,7 +309,7 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 	}
 
 	st := n.fs.getStreamer()
-	
+
 	// Usar singleflight para deduplicar descargas concurrentes del mismo rango
 	result, err, _ := fetchGroup.Do(cacheKey, func() (interface{}, error) {
 		buf := &bytes.Buffer{}
@@ -316,7 +318,7 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 			return nil, err
 		}
 		data := buf.Bytes()
-		
+
 		// Guardar en caché
 		if len(data) > 0 {
 			globalChunkCache.set(n.importID, n.fileIdx, start, data)

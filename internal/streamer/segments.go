@@ -144,14 +144,13 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	// Build range mapping using actual cached/decoded segment file sizes.
 	var off int64 = 0
 	writtenAny := false
-	
+
 	// Canal para prefetch concurrente
-	prefetchCh := make(chan SegmentLocator, prefetch)
 	prefetchErrCh := make(chan error, prefetch)
-	
+
 	for i := 0; i < len(layout.Segs); i++ {
 		seg := layout.Segs[i]
-		
+
 		// Iniciar prefetch de segmentos futuros en paralelo
 		if prefetch > 0 && i+1 < len(layout.Segs) {
 			for j := 1; j <= prefetch && i+j < len(layout.Segs); j++ {
@@ -164,7 +163,7 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 				}(nextSeg)
 			}
 		}
-		
+
 		p, err := s.ensureSegment(ctx, seg)
 		if err != nil {
 			return err
@@ -214,7 +213,7 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 			break
 		}
 	}
-	
+
 	// Consumir errores de prefetch (no bloqueantes)
 	go func() {
 		for i := 0; i < prefetch && i < len(layout.Segs); i++ {
@@ -225,7 +224,7 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 			}
 		}
 	}()
-	
+
 	if !writtenAny {
 		// Requested range starts beyond currently addressable decoded data.
 		// For FUSE readers this should behave like EOF (empty read), not I/O error.
