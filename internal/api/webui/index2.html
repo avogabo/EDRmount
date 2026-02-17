@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.54</span>
+        <span class="pill" id="buildVersionPill">v1.55</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -439,7 +439,7 @@
               <div class="muted" style="margin-top:6px">Control de subida de media: vigilancia, carpeta y NNTP de subida.</div>
 
               <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setWatchMediaEnabled" /> Vigilancia automática (activa por defecto)</label>
+                <label class="muted"><input type="checkbox" id="setWatchMediaEnabled" /> Vigilancia automática</label>
               </div>
               <div class="row" style="margin-top:8px">
                 <label class="muted">Ruta carpeta vigilada
@@ -490,7 +490,7 @@
               <div class="muted" style="margin-top:6px">Control del watcher NZB + datos NNTP de descarga (streaming/import).</div>
 
               <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setWatchNZBEnabled" /> Vigilancia automática (activa por defecto)</label>
+                <label class="muted"><input type="checkbox" id="setWatchNZBEnabled" /> Vigilancia automática</label>
               </div>
               <div class="row" style="margin-top:8px">
                 <label class="muted">Ruta carpeta vigilada
@@ -694,6 +694,28 @@
               <div class="row" style="margin-top:8px">
                 <label class="muted">Plex root
                   <input id="setPlexRoot" style="min-width:340px; margin-left:8px" placeholder="/mnt/media/library-auto" />
+                </label>
+              </div>
+            </div>
+
+            <div class="list" style="padding:12px">
+              <b>Backups</b>
+              <div class="muted" style="margin-top:6px">Copia periódica de la base de datos/config.</div>
+              <div class="row" style="margin-top:12px">
+                <label class="muted"><input type="checkbox" id="setBackupsEnabled" /> Activar backups</label>
+                <label class="muted"><input type="checkbox" id="setBackupsCompress" /> Comprimir (.gz)</label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Directorio
+                  <input id="setBackupsDir" style="min-width:280px; margin-left:8px" placeholder="/backups" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Cada (min)
+                  <input id="setBackupsEvery" type="number" style="width:110px; margin-left:8px" placeholder="0" />
+                </label>
+                <label class="muted">Mantener (n)
+                  <input id="setBackupsKeep" type="number" style="width:110px; margin-left:8px" placeholder="30" />
                 </label>
               </div>
             </div>

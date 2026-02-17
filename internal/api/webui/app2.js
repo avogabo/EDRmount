@@ -756,6 +756,14 @@ async function loadUploadSettings() {
   document.getElementById('setHealthIntervalHours').value = (hs.interval_hours != null) ? hs.interval_hours : 24;
   document.getElementById('setHealthLockTTLHours').value = (hl.lock_ttl_hours != null) ? hl.lock_ttl_hours : 6;
 
+  // Backups
+  const b = (cfg.backups || {});
+  document.getElementById('setBackupsEnabled').checked = !!b.enabled;
+  document.getElementById('setBackupsCompress').checked = (b.compress_gz !== false);
+  document.getElementById('setBackupsDir').value = b.dir || '/backups';
+  document.getElementById('setBackupsEvery').value = (b.every_mins != null) ? b.every_mins : 0;
+  document.getElementById('setBackupsKeep').value = (b.keep != null) ? b.keep : 30;
+
   // Download NNTP
   const d = (cfg.download || {});
   document.getElementById('setDL_ENABLED').checked = !!d.enabled;
@@ -855,6 +863,14 @@ async function saveUploadSettings() {
     cfg.health.scan.interval_hours = _int('setHealthIntervalHours', 24);
     cfg.health.lock = cfg.health.lock || {};
     cfg.health.lock.lock_ttl_hours = _int('setHealthLockTTLHours', 6);
+
+    // Backups
+    cfg.backups = cfg.backups || {};
+    cfg.backups.enabled = _bool('setBackupsEnabled');
+    cfg.backups.compress_gz = _bool('setBackupsCompress');
+    cfg.backups.dir = _val('setBackupsDir') || '/backups';
+    cfg.backups.every_mins = _int('setBackupsEvery', 0);
+    cfg.backups.keep = _int('setBackupsKeep', 30);
 
     // Download NNTP
     cfg.download = cfg.download || {};
