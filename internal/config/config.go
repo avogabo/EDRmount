@@ -107,7 +107,7 @@ func Default() Config {
 		Runner: Runner{Enabled: true, Mode: "exec"}, // default: real execution (not stub)
 
 		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb", Obfuscate: true},
-		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 2},
+		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 50},
 		Library:  (Library{Enabled: true, UppercaseFolders: true}).withDefaults(),
 		Metadata: (Metadata{}).withDefaults(),
 		Plex:     (Plex{}).withDefaults(),

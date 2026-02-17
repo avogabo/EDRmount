@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.52</span>
+        <span class="pill" id="buildVersionPill">v1.53</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -537,9 +537,10 @@
                   <input id="setDL_CONN" type="number" style="width:110px; margin-left:8px" placeholder="20" />
                 </label>
                 <label class="muted">Prefetch segmentos (Prefetch)
-                  <input id="setDL_PREFETCH" type="number" style="width:110px; margin-left:8px" placeholder="2" />
+                  <input id="setDL_PREFETCH" type="number" style="width:110px; margin-left:8px" placeholder="50" />
                 </label>
               </div>
+              <div id="dlStreamsHint" class="muted" style="margin-top:6px">Streams simultáneos estimados: ~0</div>
 
               <div class="muted" style="margin-top:10px">Nota: se usa en los mounts FUSE al abrir/leer un archivo (Read triggers download).</div>
             </div>

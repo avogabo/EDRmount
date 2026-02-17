@@ -184,7 +184,7 @@ async function loadConfigEditor() {
   document.getElementById('dl_user').value = d.user || '';
   document.getElementById('dl_pass').value = (d.pass && d.pass !== '***') ? d.pass : '';
   document.getElementById('dl_connections').value = d.connections || 20;
-  document.getElementById('dl_prefetch').value = (d.prefetch_segments != null) ? d.prefetch_segments : 2;
+  document.getElementById('dl_prefetch').value = (d.prefetch_segments != null) ? d.prefetch_segments : 50;
 
   // Fill runner form
   const r = (cfg.runner || {});

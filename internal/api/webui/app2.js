@@ -40,6 +40,17 @@ function fmtTime(ts) {
   return String(ts).replace('T',' ').replace('Z','');
 }
 
+function updateDLStreamsHint() {
+  const connEl = document.getElementById('setDL_CONN');
+  const preEl = document.getElementById('setDL_PREFETCH');
+  const hint = document.getElementById('dlStreamsHint');
+  if (!connEl || !preEl || !hint) return;
+  const conn = parseInt(connEl.value || '0', 10) || 0;
+  const pre = parseInt(preEl.value || '0', 10) || 0;
+  const streams = (conn > 0 && pre > 0) ? Math.max(1, Math.floor(conn / pre)) : 0;
+  hint.textContent = `Streams simultáneos estimados: ~${streams} (connections/prefetch)`;
+}
+
 // --- Manual UI (DB-backed) ---
 // NOTE: appended here for now; can be refactored into separate file later.
 async function refreshManual() {
@@ -753,7 +764,8 @@ async function loadUploadSettings() {
   document.getElementById('setDL_USER').value = d.user || '';
   document.getElementById('setDL_PASS').value = d.pass || '';
   document.getElementById('setDL_CONN').value = (d.connections != null) ? d.connections : 20;
-  document.getElementById('setDL_PREFETCH').value = (d.prefetch_segments != null) ? d.prefetch_segments : 2;
+  document.getElementById('setDL_PREFETCH').value = (d.prefetch_segments != null) ? d.prefetch_segments : 50;
+  updateDLStreamsHint();
 
   // TMDB
   const t = ((cfg.metadata || {}).tmdb || {});
@@ -851,7 +863,7 @@ async function saveUploadSettings() {
     cfg.download.user = _val('setDL_USER');
     cfg.download.pass = _val('setDL_PASS');
     cfg.download.connections = _int('setDL_CONN', 20);
-    cfg.download.prefetch_segments = _int('setDL_PREFETCH', 2);
+    cfg.download.prefetch_segments = _int('setDL_PREFETCH', 50);
 
     // TMDB
     cfg.metadata = cfg.metadata || {};
@@ -1151,6 +1163,12 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tabAuto').onclick = () => setLibraryTab('auto');
   document.getElementById('tabManual').onclick = () => setLibraryTab('manual');
   setLibraryTab('auto');
+
+  // Download tuning hint
+  const dlConn = document.getElementById('setDL_CONN');
+  const dlPref = document.getElementById('setDL_PREFETCH');
+  if (dlConn) dlConn.addEventListener('input', updateDLStreamsHint);
+  if (dlPref) dlPref.addEventListener('input', updateDLStreamsHint);
 
   // Imports UI
   if (document.getElementById('btnImportsRefresh')) {

@@ -84,7 +84,7 @@
     "user": "",
     "pass": "",
     "connections": 20,
-    "prefetch_segments": 2
+    "prefetch_segments": 50
   },
   "backups": {
     "enabled": false,
