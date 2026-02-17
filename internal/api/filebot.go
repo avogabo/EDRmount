@@ -35,16 +35,19 @@ func (s *Server) registerFileBotRoutes() {
 
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, bin, "--license", licensePath)
+		// Do not execute `--license` here (can block on some setups).
+		// This endpoint validates that binary and license file are present and callable.
+		cmd := exec.CommandContext(ctx, bin, "-version")
 		var out bytes.Buffer
 		cmd.Stdout = &out
 		cmd.Stderr = &out
 		err := cmd.Run()
 		resp := map[string]any{
-			"ok":     err == nil,
-			"binary": bin,
-			"path":   licensePath,
-			"output": truncateOutput(out.String(), 2000),
+			"ok":              err == nil,
+			"binary":          bin,
+			"path":            licensePath,
+			"license_present": true,
+			"output":          truncateOutput(out.String(), 2000),
 		}
 		if err != nil {
 			resp["error"] = err.Error()

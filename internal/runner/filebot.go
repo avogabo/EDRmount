@@ -41,16 +41,9 @@ func maybeNormalizeWithFileBot(ctx context.Context, cfg config.Config, inputPath
 		format = "{n} - {s00e00} - {t}"
 	}
 	action := "test"
-	licensePath := strings.TrimSpace(rn.FileBot.LicensePath)
-	if licensePath != "" {
-		if _, err := os.Stat(licensePath); err == nil {
-			_ = runCommand(ctx, func(line string) {
-				if onLog != nil {
-					onLog("filebot-license: " + line)
-				}
-			}, bin, "--license", licensePath)
-		}
-	}
+	// License activation is intentionally NOT executed on each upload.
+	// Running `filebot --license` per job can block/stall on some environments.
+	// Expected setup: license file is placed at /config/filebot/license.psm and activated manually.
 	// Fixed/internal for phase 1
 	db := "TheMovieDB"
 	if g.IsSeries {
