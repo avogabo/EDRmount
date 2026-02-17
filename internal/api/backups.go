@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/backup"
@@ -36,6 +37,15 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		var req struct {
+			IncludeConfig *bool `json:"include_config"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		includeConfig := true
+		if req.IncludeConfig != nil {
+			includeConfig = *req.IncludeConfig
+		}
+
 		cfg := s.Config()
 		path, err := backup.RunOnce(r.Context(), dbPath, cfg.Backups.Dir, cfg.Backups.CompressGZ)
 		if err != nil {
@@ -43,8 +53,12 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
+		cfgPath, cfgErr := "", error(nil)
+		if includeConfig {
+			cfgPath, cfgErr = backupConfigSnapshot(path, s.cfgPath, cfg.Backups.Dir)
+		}
 		backup.Rotate(cfg.Backups.Dir, cfg.Backups.Keep)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "path": path, "ts": time.Now().Unix()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "path": path, "config_path": cfgPath, "include_config": includeConfig, "config_error": errString(cfgErr), "ts": time.Now().Unix()})
 	})
 
 	// Restore
@@ -55,7 +69,8 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			return
 		}
 		var req struct {
-			Name string `json:"name"`
+			Name          string `json:"name"`
+			IncludeConfig *bool  `json:"include_config"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -67,6 +82,10 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "name required"})
 			return
+		}
+		includeConfig := true
+		if req.IncludeConfig != nil {
+			includeConfig = *req.IncludeConfig
 		}
 		// prevent path traversal
 		name := filepath.Base(req.Name)
@@ -81,8 +100,17 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
+		cfgErr := error(nil)
+		cfgName := ""
+		if includeConfig {
+			cfgName = configBackupNameFromDBBackup(name)
+			cfgFile := filepath.Join(cfg.Backups.Dir, cfgName)
+			if _, err := os.Stat(cfgFile); err == nil {
+				cfgErr = restoreConfigFile(cfgFile, s.cfgPath)
+			}
+		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "restored": name, "restarting": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "restored": name, "restored_config": cfgName, "config_error": errString(cfgErr), "include_config": includeConfig, "restarting": true})
 
 		// Restart pattern A: exit after response so Docker restarts us.
 		go func() {
@@ -161,4 +189,54 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 	})
 
 	_ = context.Canceled
+}
+
+func backupConfigSnapshot(dbBackupPath string, sourceConfigPath string, backupDir string) (string, error) {
+	if sourceConfigPath == "" {
+		return "", nil
+	}
+	b, err := os.ReadFile(sourceConfigPath)
+	if err != nil {
+		return "", err
+	}
+	name := configBackupNameFromDBBackup(filepath.Base(dbBackupPath))
+	if name == "" {
+		name = "edrmount.config." + time.Now().Format("20060102-150405") + ".json"
+	}
+	target := filepath.Join(backupDir, name)
+	if err := os.WriteFile(target, b, 0o644); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
+func configBackupNameFromDBBackup(dbName string) string {
+	name := dbName
+	if strings.HasPrefix(name, "edrmount.db.") {
+		name = strings.TrimPrefix(name, "edrmount.db.")
+	}
+	name = strings.TrimSuffix(name, ".sqlite.gz")
+	name = strings.TrimSuffix(name, ".sqlite")
+	if name == "" {
+		return ""
+	}
+	return "edrmount.config." + name + ".json"
+}
+
+func restoreConfigFile(src string, dst string) error {
+	if src == "" || dst == "" {
+		return nil
+	}
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, b, 0o644)
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

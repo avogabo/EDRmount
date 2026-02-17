@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.55</span>
+        <span class="pill" id="buildVersionPill">v1.56</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -700,7 +700,7 @@
 
             <div class="list" style="padding:12px">
               <b>Backups</b>
-              <div class="muted" style="margin-top:6px">Copia periódica de la base de datos/config.</div>
+              <div class="muted" style="margin-top:6px">Copia periódica de la base de datos y configuración.</div>
               <div class="row" style="margin-top:12px">
                 <label class="muted"><input type="checkbox" id="setBackupsEnabled" /> Activar backups</label>
                 <label class="muted"><input type="checkbox" id="setBackupsCompress" /> Comprimir (.gz)</label>
@@ -718,6 +718,17 @@
                   <input id="setBackupsKeep" type="number" style="width:110px; margin-left:8px" placeholder="30" />
                 </label>
               </div>
+              <div class="row" style="margin-top:10px">
+                <button class="btn" id="setBackupsRun">Backup ahora</button>
+                <button class="btn" id="setBackupsReload">Recargar lista</button>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label class="muted">Restaurar backup
+                  <select id="setBackupsRestoreName" style="min-width:360px; margin-left:8px"></select>
+                </label>
+                <button class="btn danger" id="setBackupsRestore">Restaurar</button>
+              </div>
+              <div class="muted" id="setBackupsStatus" style="margin-top:8px"></div>
             </div>
           </div>
         </section>

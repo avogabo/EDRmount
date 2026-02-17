@@ -53,6 +53,26 @@ function updateDLStreamsHint() {
   hint.textContent = `Streams simultáneos estimados: ~${streams}`;
 }
 
+async function refreshBackupsList() {
+  const sel = document.getElementById('setBackupsRestoreName');
+  const st = document.getElementById('setBackupsStatus');
+  if (!sel) return;
+  try {
+    const r = await apiGet('/api/v1/backups');
+    const items = (r && r.items) ? r.items : [];
+    sel.innerHTML = '';
+    for (const it of items) {
+      const o = document.createElement('option');
+      o.value = it.name;
+      o.textContent = `${it.name} (${it.time || ''})`;
+      sel.appendChild(o);
+    }
+    if (st) st.textContent = `Backups: ${items.length}`;
+  } catch (e) {
+    if (st) st.textContent = `Error backups: ${e}`;
+  }
+}
+
 // --- Manual UI (DB-backed) ---
 // NOTE: appended here for now; can be refactored into separate file later.
 async function refreshManual() {
@@ -763,6 +783,7 @@ async function loadUploadSettings() {
   document.getElementById('setBackupsDir').value = b.dir || '/backups';
   document.getElementById('setBackupsEvery').value = (b.every_mins != null) ? b.every_mins : 0;
   document.getElementById('setBackupsKeep').value = (b.keep != null) ? b.keep : 30;
+  await refreshBackupsList();
 
   // Download NNTP
   const d = (cfg.download || {});
@@ -1265,6 +1286,39 @@ window.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('btnSetSave')) {
     document.getElementById('btnSetSave').onclick = () => saveUploadSettings().catch(() => {});
     document.getElementById('btnSetReload').onclick = () => loadUploadSettings().catch(() => {});
+  }
+  if (document.getElementById('setBackupsReload')) {
+    document.getElementById('setBackupsReload').onclick = () => refreshBackupsList().catch(() => {});
+  }
+  if (document.getElementById('setBackupsRun')) {
+    document.getElementById('setBackupsRun').onclick = async () => {
+      const st = document.getElementById('setBackupsStatus');
+      try {
+        if (st) st.textContent = 'Ejecutando backup…';
+        await apiPostJson('/api/v1/backups/run', { include_config: true });
+        await refreshBackupsList();
+        if (st) st.textContent = 'Backup manual completado';
+      } catch (e) {
+        if (st) st.textContent = 'Error backup: ' + String(e);
+      }
+    };
+  }
+  if (document.getElementById('setBackupsRestore')) {
+    document.getElementById('setBackupsRestore').onclick = async () => {
+      const sel = document.getElementById('setBackupsRestoreName');
+      const st = document.getElementById('setBackupsStatus');
+      const name = sel ? String(sel.value || '').trim() : '';
+      if (!name) return;
+      const ok = confirm(`¿Restaurar backup ${name}?\n\nSe restaurará DB + config y EDRmount se reiniciará.`);
+      if (!ok) return;
+      try {
+        if (st) st.textContent = 'Restaurando…';
+        await apiPostJson('/api/v1/backups/restore', { name, include_config: true });
+        if (st) st.textContent = 'Restaurado. Reiniciando…';
+      } catch (e) {
+        if (st) st.textContent = 'Error restore: ' + String(e);
+      }
+    };
   }
   if (document.getElementById('btnDBReset')) {
     document.getElementById('btnDBReset').onclick = async () => {
