@@ -27,7 +27,24 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"dir": cfg.Backups.Dir, "items": items})
+		out := make([]map[string]any, 0, len(items))
+		for _, it := range items {
+			cfgName := configBackupNameFromDBBackup(it.Name)
+			hasCfg := false
+			if cfgName != "" {
+				if _, err := os.Stat(filepath.Join(cfg.Backups.Dir, cfgName)); err == nil {
+					hasCfg = true
+				}
+			}
+			out = append(out, map[string]any{
+				"name":           it.Name,
+				"size":           it.Size,
+				"time":           it.Time,
+				"config_name":    cfgName,
+				"config_present": hasCfg,
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"dir": cfg.Backups.Dir, "items": out})
 	})
 
 	// Backup now

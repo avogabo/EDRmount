@@ -70,7 +70,8 @@ async function refreshBackupsList() {
     for (const it of items) {
       const o = document.createElement('option');
       o.value = it.name;
-      o.textContent = `${it.name} (${it.time || ''})`;
+      const cfgTag = it.config_present ? ' +config' : '';
+      o.textContent = `${it.name}${cfgTag} (${it.time || ''})`;
       sel.appendChild(o);
     }
     if (st) st.textContent = `Backups: ${items.length}`;
