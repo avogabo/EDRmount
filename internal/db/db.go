@@ -200,18 +200,12 @@ func (d *DB) migrate() error {
 	seedManualRoot(d.SQL)
 
 	// Recovery on startup after container restart/crash.
-	// 1) Upload jobs left in running/pending are marked failed so they never stay stuck forever.
-	// 2) Non-upload jobs are re-queued for retry.
+	// Re-queue interrupted jobs so they can continue automatically after restart.
 	recoveryAt := nowUnix()
 	_, _ = d.SQL.Exec(`
 		UPDATE jobs
-		SET state='failed', updated_at=?, error='recovered after restart: previous run interrupted'
-		WHERE state IN ('running','pending') AND type='upload_media'
-	`, recoveryAt)
-	_, _ = d.SQL.Exec(`
-		UPDATE jobs
-		SET state='queued', updated_at=?
-		WHERE state IN ('running','pending') AND type<>'upload_media'
+		SET state='queued', updated_at=?, error='recovered after restart: re-queued'
+		WHERE state IN ('running','pending')
 	`, recoveryAt)
 	return nil
 }
