@@ -237,6 +237,7 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerLibraryTemplatesRoutes()
 	s.registerUploadSummaryRoutes()
 	s.registerHealthRoutes()
+	s.registerFileBotRoutes()
 
 	// Backups
 	s.registerBackupRoutes(opts.DBPath)

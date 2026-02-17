@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.56</span>
+        <span class="pill" id="buildVersionPill">v1.57</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -639,9 +639,11 @@
 
               <div class="row" style="margin-top:14px"><div class="muted"><b>FileBot</b> (auto rename)</div></div>
               <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
-                <label class="muted">License path
-                  <input id="setFileBotLicensePath" style="min-width:360px; margin-left:8px" placeholder="/config/filebot/license.psm" />
-                </label>
+                <div class="muted">License path fijo: <span class="mono">/config/filebot/license.psm</span></div>
+                <button class="btn" id="btnFileBotTestLicense">Test licencia</button>
+                <span class="muted" id="filebotTestStatus"></span>
+              </div>
+              <div class="row" style="margin-top:8px; gap:12px; flex-wrap:wrap">
                 <label class="muted">DB
                   <input id="setFileBotDB" style="min-width:180px; margin-left:8px" placeholder="TheMovieDB" />
                 </label>

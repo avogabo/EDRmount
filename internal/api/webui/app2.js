@@ -40,16 +40,22 @@ function fmtTime(ts) {
   return String(ts).replace('T',' ').replace('Z','');
 }
 
+function _num(v) {
+  const s = String(v == null ? '' : v).trim();
+  const n = Number(s);
+  if (Number.isFinite(n)) return n;
+  const m = s.match(/\d+/);
+  return m ? Number(m[0]) : 0;
+}
+
 function updateDLStreamsHint() {
   const connEl = document.getElementById('setDL_CONN');
   const preEl = document.getElementById('setDL_PREFETCH');
   const hint = document.getElementById('dlStreamsHint');
   if (!connEl || !preEl || !hint) return;
-  const conn = Number((connEl.value || '').trim());
-  const pre = Number((preEl.value || '').trim());
-  const streams = (Number.isFinite(conn) && Number.isFinite(pre) && conn > 0 && pre > 0)
-    ? Math.max(1, Math.floor(conn / pre))
-    : 0;
+  const conn = _num(connEl.value || connEl.placeholder || 0);
+  const pre = _num(preEl.value || preEl.placeholder || 0);
+  const streams = (conn > 0 && pre > 0) ? Math.max(1, Math.floor(conn / pre)) : 0;
   hint.textContent = `Streams simultáneos estimados: ~${streams}`;
 }
 
@@ -807,7 +813,6 @@ async function loadUploadSettings() {
   // Rename / FileBot (mandatory)
   const rn = (cfg.rename || {});
   const fb = (rn.filebot || {});
-  document.getElementById('setFileBotLicensePath').value = fb.license_path || '/config/filebot/license.psm';
   document.getElementById('setFileBotDB').value = fb.db || 'TheMovieDB';
   document.getElementById('setFileBotLanguage').value = fb.language || 'es';
 
@@ -917,7 +922,7 @@ async function saveUploadSettings() {
     cfg.rename.filebot = cfg.rename.filebot || {};
     cfg.rename.filebot.enabled = true;
     cfg.rename.filebot.binary = '/usr/local/bin/filebot';
-    cfg.rename.filebot.license_path = _val('setFileBotLicensePath') || '/config/filebot/license.psm';
+    cfg.rename.filebot.license_path = '/config/filebot/license.psm';
     cfg.rename.filebot.db = _val('setFileBotDB') || 'TheMovieDB';
     cfg.rename.filebot.language = _val('setFileBotLanguage') || 'es';
     cfg.rename.filebot.action = 'test';
@@ -1329,6 +1334,18 @@ window.addEventListener('DOMContentLoaded', () => {
       await apiPostJson('/api/v1/db/reset', {});
       if (st) st.textContent = 'Reiniciando… (Restarting)';
       await apiPostJson('/api/v1/restart', {});
+    };
+  }
+  if (document.getElementById('btnFileBotTestLicense')) {
+    document.getElementById('btnFileBotTestLicense').onclick = async () => {
+      const st = document.getElementById('filebotTestStatus');
+      try {
+        if (st) st.textContent = 'Probando licencia...';
+        const r = await apiPostJson('/api/v1/filebot/license/test', {});
+        if (st) st.textContent = r && r.ok ? 'OK licencia FileBot' : 'Licencia no válida';
+      } catch (e) {
+        if (st) st.textContent = 'Error test licencia: ' + String(e);
+      }
     };
   }
 
