@@ -1310,23 +1310,32 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     };
   }
-  if (document.getElementById('setBackupsRestore')) {
-    document.getElementById('setBackupsRestore').onclick = async () => {
+  const bindRestore = (btnId, includeDB, includeConfig, label) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.onclick = async () => {
       const sel = document.getElementById('setBackupsRestoreName');
       const st = document.getElementById('setBackupsStatus');
       const name = sel ? String(sel.value || '').trim() : '';
       if (!name) return;
-      const ok = confirm(`¿Restaurar backup ${name}?\n\nSe restaurará DB + config y EDRmount se reiniciará.`);
+      const ok = confirm(`¿Restaurar backup ${name}?\n\nModo: ${label}. EDRmount se reiniciará.`);
       if (!ok) return;
       try {
-        if (st) st.textContent = 'Restaurando…';
-        await apiPostJson('/api/v1/backups/restore', { name, include_config: true });
+        if (st) st.textContent = `Restaurando (${label})…`;
+        await apiPostJson('/api/v1/backups/restore', {
+          name,
+          include_db: includeDB,
+          include_config: includeConfig,
+        });
         if (st) st.textContent = 'Restaurado. Reiniciando…';
       } catch (e) {
         if (st) st.textContent = 'Error restore: ' + String(e);
       }
     };
-  }
+  };
+  bindRestore('setBackupsRestoreAll', true, true, 'DB+config');
+  bindRestore('setBackupsRestoreDB', true, false, 'solo DB');
+  bindRestore('setBackupsRestoreConfig', false, true, 'solo config');
   if (document.getElementById('btnDBReset')) {
     document.getElementById('btnDBReset').onclick = async () => {
       const ok = confirm('¿Borrar SOLO la base de datos?\n\n- Se perderán imports/overrides/jobs\n- La configuración NO se borra\n- Reinicia el contenedor\n\n¿Continuar?');

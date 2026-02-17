@@ -87,6 +87,7 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 		}
 		var req struct {
 			Name          string `json:"name"`
+			IncludeDB     *bool  `json:"include_db"`
 			IncludeConfig *bool  `json:"include_config"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -100,22 +101,33 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "name required"})
 			return
 		}
+		includeDB := true
+		if req.IncludeDB != nil {
+			includeDB = *req.IncludeDB
+		}
 		includeConfig := true
 		if req.IncludeConfig != nil {
 			includeConfig = *req.IncludeConfig
 		}
+		if !includeDB && !includeConfig {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "nothing selected to restore"})
+			return
+		}
 		// prevent path traversal
 		name := filepath.Base(req.Name)
 		full := filepath.Join(cfg.Backups.Dir, name)
-		if _, err := os.Stat(full); err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "backup not found"})
-			return
-		}
-		if err := backup.RestoreFrom(r.Context(), full, dbPath); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
+		if includeDB {
+			if _, err := os.Stat(full); err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "backup not found"})
+				return
+			}
+			if err := backup.RestoreFrom(r.Context(), full, dbPath); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
 		}
 		cfgErr := error(nil)
 		cfgName := ""
@@ -124,10 +136,12 @@ func (s *Server) registerBackupRoutes(dbPath string) {
 			cfgFile := filepath.Join(cfg.Backups.Dir, cfgName)
 			if _, err := os.Stat(cfgFile); err == nil {
 				cfgErr = restoreConfigFile(cfgFile, s.cfgPath)
+			} else {
+				cfgErr = err
 			}
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "restored": name, "restored_config": cfgName, "config_error": errString(cfgErr), "include_config": includeConfig, "restarting": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "restored": name, "include_db": includeDB, "include_config": includeConfig, "restored_config": cfgName, "config_error": errString(cfgErr), "restarting": true})
 
 		// Restart pattern A: exit after response so Docker restarts us.
 		go func() {

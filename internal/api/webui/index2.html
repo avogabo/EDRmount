@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.60</span>
+        <span class="pill" id="buildVersionPill">v1.61</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -728,7 +728,9 @@
                 <label class="muted">Restaurar backup
                   <select id="setBackupsRestoreName" style="min-width:360px; margin-left:8px"></select>
                 </label>
-                <button class="btn danger" id="setBackupsRestore">Restaurar</button>
+                <button class="btn danger" id="setBackupsRestoreAll">Restaurar DB+config</button>
+                <button class="btn danger" id="setBackupsRestoreDB">Solo DB</button>
+                <button class="btn danger" id="setBackupsRestoreConfig">Solo config</button>
               </div>
               <div class="muted" id="setBackupsStatus" style="margin-top:8px"></div>
             </div>
