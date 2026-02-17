@@ -27,13 +27,13 @@ type Streamer struct {
 }
 
 func New(cfg config.DownloadProvider, j *jobs.Store, cacheDir string, maxCacheBytes int64) *Streamer {
-	// Conservative pool size for streaming; cap even if provider allows more.
-	poolSize := 8
-	if cfg.Connections > 0 && cfg.Connections < poolSize {
-		poolSize = cfg.Connections
+	// Respect configured NNTP connections for streaming, with sane bounds.
+	poolSize := cfg.Connections
+	if poolSize <= 0 {
+		poolSize = 8
 	}
-	if poolSize < 1 {
-		poolSize = 1
+	if poolSize > 64 {
+		poolSize = 64
 	}
 	p := nntp.NewPool(nntp.Config{Host: cfg.Host, Port: cfg.Port, SSL: cfg.SSL, User: cfg.User, Pass: cfg.Pass, Timeout: 15 * time.Second}, poolSize)
 	return &Streamer{cfg: cfg, jobs: j, cacheDir: cacheDir, pool: p, maxCache: maxCacheBytes}
