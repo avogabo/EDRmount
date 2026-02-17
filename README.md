@@ -41,7 +41,7 @@ Debe mostrar `/host -> rshared`.
 ## Volúmenes / Paths
 
 - `/config`: `config.json` + SQLite
-- `/host:rshared`: inbox + mounts FUSE
+- `/host:rshared`: inbox + mounts FUSE (donde se monta `inbox` y `mount`; en `inbox` van las watch `media` y `nzb`, y en `mount` quedan los montajes para Plex/Kodi/Jellyfin/Infuse).
 - `/cache`: staging + cache + backups locales de Health
 - `/backups`: backups
 
