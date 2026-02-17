@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -527,7 +529,18 @@ func (n *manualFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse
 
 	st := n.fs.getStreamer()
 	buf := &bytes.Buffer{}
-	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.realName, start, end, buf, n.fs.Cfg.Download.PrefetchSegments); err != nil {
+	prefetch := n.fs.Cfg.Download.PrefetchSegments
+	if prefetch > 2 {
+		prefetch = 2
+	}
+	if prefetch < 0 {
+		prefetch = 0
+	}
+	if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.realName, start, end, buf, prefetch); err != nil {
+		if errors.Is(err, io.EOF) {
+			resp.Data = nil
+			return nil
+		}
 		log.Printf("fuse manual read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
 		return fuse.EIO
 	}
