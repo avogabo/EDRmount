@@ -199,9 +199,20 @@ func (d *DB) migrate() error {
 	_ = backfillFilenames(d.SQL)
 	seedManualRoot(d.SQL)
 
-	// Recovery: if the container restarted mid-job, some jobs may be stuck in "running"
-	// (or legacy "pending"). Normalize both to "queued" so the runner can pick them up.
-	_, _ = d.SQL.Exec(`UPDATE jobs SET state='queued', updated_at=? WHERE state IN ('running','pending')`, nowUnix())
+	// Recovery on startup after container restart/crash.
+	// 1) Upload jobs left in running/pending are marked failed so they never stay stuck forever.
+	// 2) Non-upload jobs are re-queued for retry.
+	recoveryAt := nowUnix()
+	_, _ = d.SQL.Exec(`
+		UPDATE jobs
+		SET state='failed', updated_at=?, error='recovered after restart: previous run interrupted'
+		WHERE state IN ('running','pending') AND type='upload_media'
+	`, recoveryAt)
+	_, _ = d.SQL.Exec(`
+		UPDATE jobs
+		SET state='queued', updated_at=?
+		WHERE state IN ('running','pending') AND type<>'upload_media'
+	`, recoveryAt)
 	return nil
 }
 
