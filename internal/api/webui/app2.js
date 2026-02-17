@@ -677,6 +677,10 @@ function _bool(id) {
   const n = document.getElementById(id);
   return !!(n && n.checked);
 }
+function _valKeep(id, current) {
+  const v = _val(id);
+  return v === '' ? (current || '') : v;
+}
 
 async function loadUploadSettings() {
   const st = document.getElementById('setStatus');
@@ -864,11 +868,11 @@ async function saveUploadSettings() {
     // library-auto always enabled (ignore UI checkbox)
     cfg.library.enabled = true;
     cfg.library.uppercase_folders = _bool('setLibUpper');
-    cfg.library.movie_dir_template = _val('setLibMovieDirT');
-    cfg.library.movie_file_template = _val('setLibMovieFileT');
-    cfg.library.series_dir_template = _val('setLibSeriesDirT');
-    cfg.library.season_folder_template = _val('setLibSeasonT');
-    cfg.library.series_file_template = _val('setLibSeriesFileT');
+    cfg.library.movie_dir_template = _valKeep('setLibMovieDirT', cfg.library.movie_dir_template);
+    cfg.library.movie_file_template = _valKeep('setLibMovieFileT', cfg.library.movie_file_template);
+    cfg.library.series_dir_template = _valKeep('setLibSeriesDirT', cfg.library.series_dir_template);
+    cfg.library.season_folder_template = _valKeep('setLibSeasonT', cfg.library.season_folder_template);
+    cfg.library.series_file_template = _valKeep('setLibSeriesFileT', cfg.library.series_file_template);
 
     // Plex (solo library-auto)
     cfg.plex = cfg.plex || {};
