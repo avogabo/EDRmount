@@ -22,10 +22,10 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
-      - ./edrmount-data/config:/config
-      - ./edrmount-data/cache:/cache
-      - ./edrmount-backups:/backups
-      - ./edrmount-data/host:/host:rshared
+      - /tu/ruta/a/edrmount/config:/config
+      - /tu/ruta/a/edrmount/cache:/cache
+      - /tu/ruta/a/edrmount/backups:/backups
+      - /tu/ruta/a/tu-biblioteca-host:/host:rshared
 ```
 
 UI: `http://<HOST>:1516/webui/`
@@ -46,16 +46,15 @@ Debe mostrar `/host -> rshared`.
 - `/backups`: backups
 
 Mounts (FUSE):
-- `/host/mount/raw`
 - `/host/mount/library-auto` (Plex)
 - `/host/mount/library-manual`
 
 ## Funciones (UI)
 
 - **Biblioteca**: navegar `library-auto` / `library-manual`
-- **Subida**: upload (ngPost/Nyuu) → NZB a RAW (+ PAR2 local opcional)
+- **Subida**: upload (ngPost) → NZB (+ PAR2 local opcional)
 - **Importar**: importar NZBs → aparecen MKVs virtuales
-- **Health**: escaneo + reparación automática con **PAR2 local** (genera NZB limpio, sin `.par2`)
+- **Health**: escaneo + reparación automática con **PAR2 local** (el NZB reparado queda limpio, sin adjuntar nuevos `.par2`)
 - **Ajustes**: config + restart
 - **Logs**: logs de jobs
 
@@ -88,4 +87,3 @@ Si `/config/config.json` no existe, EDRmount crea un **config.json mínimo** (si
 - PAR2 se **guarda local** (no se sube al release).
 - Health usa `.health.lock` para evitar doble reparación en RAW compartido.
 - No publiques `config.json` con credenciales.
-- El icono de la app en paneles (como Unraid CA) depende de la **plantilla del panel**; Docker Compose no define icono visual universal.
