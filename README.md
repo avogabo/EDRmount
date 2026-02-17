@@ -3,27 +3,40 @@
 EDRmount convierte **NZBs → una biblioteca FUSE** con MKVs “virtuales” que se **descargan on‑demand**, e incluye una **UI web** para **Importar / Subir / Health (reparar)**.
 Pensado para que **Plex apunte a `library-auto`**.
 
-## Quickstart (Docker Compose)
+## Quickstart (Docker Compose - recomendado)
+
+> Este es el despliegue canónico para todos los entornos (Unraid, Portainer, Docker host, etc.).
 
 ```yaml
 services:
   edrmount:
-    image: edrmount:dev
+    image: ghcr.io/avogabo/edrmount:latest
     container_name: edrmount
     restart: unless-stopped
     ports:
       - "1516:1516"
-    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
     security_opt:
-      - label=disable
+      - apparmor:unconfined
     volumes:
       - ./edrmount-data/config:/config
-      - ./edrmount-data/host:/host:rshared
       - ./edrmount-data/cache:/cache
       - ./edrmount-backups:/backups
+      - ./edrmount-data/host:/host:rshared
 ```
 
 UI: `http://<HOST>:1516/webui/`
+
+### Validación rápida tras levantar
+
+```bash
+docker inspect edrmount --format '{{range .Mounts}}{{println .Destination "->" .Propagation}}{{end}}'
+```
+
+Debe mostrar `/host -> rshared`.
 
 ## Volúmenes / Paths
 
@@ -75,3 +88,4 @@ Si `/config/config.json` no existe, EDRmount crea un **config.json mínimo** (si
 - PAR2 se **guarda local** (no se sube al release).
 - Health usa `.health.lock` para evitar doble reparación en RAW compartido.
 - No publiques `config.json` con credenciales.
+- El icono de la app en paneles (como Unraid CA) depende de la **plantilla del panel**; Docker Compose no define icono visual universal.
