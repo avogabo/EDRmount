@@ -140,7 +140,7 @@
         <b>EDRmount</b>
       </div>
       <div class="hdrRight">
-        <span class="pill" id="buildVersionPill">v1.53</span>
+        <span class="pill" id="buildVersionPill">v1.54</span>
         <button class="btn" id="btnRestartTop">Reiniciar (Restart)</button>
       </div>
     </header>
@@ -412,7 +412,7 @@
               <b>Notas</b>
               <div class="muted" style="margin-top:6px">
                 - La reparación solo funciona si <b>health.enabled</b> está activo en Ajustes.<br/>
-                - Los backups del NZB original se guardan en <span class="mono">/host/inbox/nzb/.health-bak</span> para no ensuciar el RAW/FUSE.
+                - Los backups del NZB original se guardan en <span class="mono">/host/inbox/nzb/.health-bak</span>.
               </div>
             </div>
           </div>
@@ -436,7 +436,7 @@
           <div class="grid" style="margin-top:12px">
             <div class="list" style="padding:12px">
               <b>Subidas</b>
-              <div class="muted" style="margin-top:6px">Control de subida de media: vigilancia, carpeta, proveedor y NNTP de subida.</div>
+              <div class="muted" style="margin-top:6px">Control de subida de media: vigilancia, carpeta y NNTP de subida.</div>
 
               <div class="row" style="margin-top:12px">
                 <label class="muted"><input type="checkbox" id="setWatchMediaEnabled" /> Vigilancia automática (activa por defecto)</label>
@@ -449,17 +449,7 @@
               </div>
 
               <div class="row" style="margin-top:14px">
-                <label class="muted">Proveedor (Provider)
-                  <select id="setUploadProvider" style="min-width:180px; margin-left:8px">
-                    <option value="ngpost">ngPost</option>
-                    <option value="nyuu">Nyuu</option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="row" style="margin-top:14px">
-                <b>Servidor Usenet (Upload NNTP)</b>
-                <span class="muted">(Nyuu usa los mismos datos)</span>
+                <b>Servidor Usenet (Upload NNTP - ngPost)</b>
               </div>
               <div class="row" style="margin-top:8px">
                 <label class="muted">Host

@@ -45,10 +45,12 @@ function updateDLStreamsHint() {
   const preEl = document.getElementById('setDL_PREFETCH');
   const hint = document.getElementById('dlStreamsHint');
   if (!connEl || !preEl || !hint) return;
-  const conn = parseInt(connEl.value || '0', 10) || 0;
-  const pre = parseInt(preEl.value || '0', 10) || 0;
-  const streams = (conn > 0 && pre > 0) ? Math.max(1, Math.floor(conn / pre)) : 0;
-  hint.textContent = `Streams simultáneos estimados: ~${streams} (connections/prefetch)`;
+  const conn = Number((connEl.value || '').trim());
+  const pre = Number((preEl.value || '').trim());
+  const streams = (Number.isFinite(conn) && Number.isFinite(pre) && conn > 0 && pre > 0)
+    ? Math.max(1, Math.floor(conn / pre))
+    : 0;
+  hint.textContent = `Streams simultáneos estimados: ~${streams}`;
 }
 
 // --- Manual UI (DB-backed) ---
@@ -657,17 +659,16 @@ async function loadUploadSettings() {
   const cfg = await apiGet('/api/v1/config');
 
   // Watch (Media uploads)
-  document.getElementById('setWatchMediaEnabled').checked = !!(cfg.watch && cfg.watch.media && cfg.watch.media.enabled);
+  document.getElementById('setWatchMediaEnabled').checked = (cfg.watch && cfg.watch.media && cfg.watch.media.enabled != null) ? !!cfg.watch.media.enabled : true;
   document.getElementById('setWatchMediaDir').value = (cfg.watch && cfg.watch.media && cfg.watch.media.dir) ? cfg.watch.media.dir : '';
   document.getElementById('setWatchMediaRecursive').checked = !!(cfg.watch && cfg.watch.media && cfg.watch.media.recursive);
 
   // Watch (NZB import)
-  document.getElementById('setWatchNZBEnabled').checked = !!(cfg.watch && cfg.watch.nzb && cfg.watch.nzb.enabled);
+  document.getElementById('setWatchNZBEnabled').checked = (cfg.watch && cfg.watch.nzb && cfg.watch.nzb.enabled != null) ? !!cfg.watch.nzb.enabled : true;
   document.getElementById('setWatchNZBDir').value = (cfg.watch && cfg.watch.nzb && cfg.watch.nzb.dir) ? cfg.watch.nzb.dir : '';
   document.getElementById('setWatchNZBRecursive').checked = !!(cfg.watch && cfg.watch.nzb && cfg.watch.nzb.recursive);
 
-  // Provider
-  document.getElementById('setUploadProvider').value = (cfg.upload && cfg.upload.provider) ? cfg.upload.provider : 'ngpost';
+  // Provider fixed to ngpost in this UI version.
 
   // Upload NNTP (NgPost config reused for Nyuu)
   const n = (cfg.ngpost || {});
@@ -766,6 +767,7 @@ async function loadUploadSettings() {
   document.getElementById('setDL_CONN').value = (d.connections != null) ? d.connections : 20;
   document.getElementById('setDL_PREFETCH').value = (d.prefetch_segments != null) ? d.prefetch_segments : 50;
   updateDLStreamsHint();
+  setTimeout(updateDLStreamsHint, 0);
 
   // TMDB
   const t = ((cfg.metadata || {}).tmdb || {});
@@ -807,9 +809,9 @@ async function saveUploadSettings() {
     cfg.watch.nzb.dir = _val('setWatchNZBDir');
     cfg.watch.nzb.recursive = _bool('setWatchNZBRecursive');
 
-    // Provider
+    // Provider fixed for now
     cfg.upload = cfg.upload || {};
-    cfg.upload.provider = _val('setUploadProvider') || 'ngpost';
+    cfg.upload.provider = 'ngpost';
 
     // NNTP upload settings (ngpost section)
     cfg.ngpost = cfg.ngpost || {};
