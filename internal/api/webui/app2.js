@@ -242,7 +242,6 @@ function fmtSize(n) {
 
 // Pages
 let __uploadTimer = null;
-let __settingsLoadedOnce = false;
 let __logsLoadedOnce = false;
 function showPage(name) {
   for (const id of ['library','upload','import','health','settings','logs']) {
@@ -263,10 +262,8 @@ function showPage(name) {
   }
 
   if (name === 'settings') {
-    if (!__settingsLoadedOnce) {
-      __settingsLoadedOnce = true;
-      loadUploadSettings().catch(() => {});
-    }
+    // Always reload settings to reflect persisted values after save/restart.
+    loadUploadSettings().catch(() => {});
   }
 
   if (name === 'health') {
