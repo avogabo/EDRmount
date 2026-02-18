@@ -139,8 +139,10 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 					if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), maxMtime, stableFor); ok {
 						_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": path})
 					}
-					return fs.SkipDir
 				}
+				// Critical: never descend into season folders. Otherwise, while copying,
+				// early single episodes can be enqueued as individual uploads.
+				return fs.SkipDir
 			}
 
 			return nil
