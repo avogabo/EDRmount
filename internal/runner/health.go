@@ -300,30 +300,66 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 
 	// par2 repair in-place
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s", "/usr/bin/par2", filepath.Base(parMain)))
-	// IMPORTANT: do not pass an alternate target filename here; let PAR2 use its own indexed target paths.
-	cmd := exec.CommandContext(ctx, "par2", "r", parMain)
-	cmd.Dir = workDir
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	scanPipe := func(prefix string, rc io.ReadCloser) {
-		defer func() { _ = rc.Close() }()
-		s := bufio.NewScanner(rc)
-		for s.Scan() {
-			_ = r.jobs.AppendLog(ctx, jobID, prefix+s.Text())
+
+	runPar2 := func() error {
+		cmd := exec.CommandContext(ctx, "par2", "r", parMain)
+		cmd.Dir = workDir
+		stdout, _ := cmd.StdoutPipe()
+		stderr, _ := cmd.StderrPipe()
+		if err := cmd.Start(); err != nil {
+			return err
 		}
+		scanPipe := func(prefix string, rc io.ReadCloser) {
+			defer func() { _ = rc.Close() }()
+			s := bufio.NewScanner(rc)
+			for s.Scan() {
+				_ = r.jobs.AppendLog(ctx, jobID, prefix+s.Text())
+			}
+		}
+		if stdout != nil {
+			go scanPipe("", stdout)
+		}
+		if stderr != nil {
+			go scanPipe("ERR: ", stderr)
+		}
+		return cmd.Wait()
 	}
-	if stdout != nil {
-		go scanPipe("", stdout)
-	}
-	if stderr != nil {
-		go scanPipe("ERR: ", stderr)
-	}
-	if err := cmd.Wait(); err != nil {
+
+	if err := runPar2(); err != nil {
+		// Retry strategy: parse the latest "Target: \"...\" - missing." hint from logs,
+		// map that path to outFile, and run par2 once more.
+		rows, _ := r.jobs.DB().SQL.QueryContext(ctx, `SELECT line FROM job_logs WHERE job_id=? ORDER BY ts DESC LIMIT 200`, jobID)
+		missingRel := ""
+		if rows != nil {
+			defer rows.Close()
+			re := regexp.MustCompile(`Target:\s*"([^"]+)"\s*-\s*missing\.`)
+			for rows.Next() {
+				var ln string
+				if e := rows.Scan(&ln); e != nil {
+					continue
+				}
+				if m := re.FindStringSubmatch(ln); len(m) == 2 {
+					cand := filepath.Clean(m[1])
+					if cand != "." && cand != "/" {
+						missingRel = strings.TrimPrefix(cand, "/")
+						break
+					}
+				}
+			}
+		}
+		if strings.TrimSpace(missingRel) != "" {
+			mapTarget(missingRel)
+			_ = r.jobs.AppendLog(ctx, jobID, "health: par2 retry after dynamic target map: "+missingRel)
+			if err2 := runPar2(); err2 == nil {
+				goto par2OK
+			} else {
+				return fmt.Errorf("health: par2 repair failed after retry: %w", err2)
+			}
+		}
 		return fmt.Errorf("health: par2 repair failed: %w", err)
 	}
+
+par2OK:
 
 	// Now re-upload the repaired MKV and generate a CLEAN NZB (no PAR2 included).
 	repairedNZBTmp := filepath.Join(workDir, stem+".repaired.nzb")
