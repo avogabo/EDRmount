@@ -107,6 +107,9 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 	// NOTE: do NOT rely on file ModTime age for readiness: many copy/move tools preserve
 	// source mtimes, which can make fresh files look "old" and trigger premature uploads.
 	stableFor := 60 * time.Second
+	// Folders are trickier (series/season copies can pause between episodes).
+	// Use a stricter two-window confirmation for folder enqueueing.
+	folderStableFor := 60 * time.Second
 
 	isVideo := func(name string) bool {
 		low := strings.ToLower(name)
@@ -132,7 +135,15 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 			vidCount, totalBytes, maxMtime, _ := mediaDirSignature(path, isVideo)
 			if vidCount > 0 {
 				sigPath := path + "#pack"
-				if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), maxMtime, stableFor); ok {
+
+				// If we detect temporary/in-progress artifacts (e.g. rsync ".file.mkv.XYZ"),
+				// force the folder to stay pending.
+				if hasInProgressArtifacts(path) {
+					_, _ = w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), time.Now().Unix(), folderStableFor)
+					return fs.SkipDir
+				}
+
+				if ok, _ := w.markStableSignatureConfirmed(ctx, sigPath, "media_pack_pending", "media_pack_armed", "media_pack", totalBytes+int64(vidCount), maxMtime, folderStableFor); ok {
 					enqueuePath := path
 					// Only collapse folder->single file when the folder is flat (no subdirs).
 					// If subdirs exist (e.g. "Serie/Temporada 1/..."), keep folder enqueue to
@@ -232,6 +243,31 @@ func hasSubdirs(root string) bool {
 	return false
 }
 
+func hasInProgressArtifacts(root string) bool {
+	isTempName := func(name string) bool {
+		n := strings.ToLower(strings.TrimSpace(name))
+		if n == "" {
+			return false
+		}
+		if strings.HasPrefix(n, ".") && strings.Contains(n, ".mkv.") {
+			return true // common rsync temp pattern: .file.mkv.XXXXXX
+		}
+		return strings.HasSuffix(n, ".part") || strings.HasSuffix(n, ".partial") || strings.HasSuffix(n, ".tmp") || strings.HasSuffix(n, ".!qb")
+	}
+	found := false
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
+		if e != nil || d == nil {
+			return nil
+		}
+		if isTempName(d.Name()) {
+			found = true
+			return fs.SkipDir
+		}
+		return nil
+	})
+	return found
+}
+
 func (w *Watcher) markSeen(ctx context.Context, path, kind string, info fs.FileInfo) (bool, error) {
 	d := w.jobs.DB().SQL
 	size := info.Size()
@@ -304,6 +340,58 @@ func (w *Watcher) markStableSignature(ctx context.Context, path, pendingKind, re
 	}
 
 	// Unknown kind: treat it as pending (backward compat).
+	_, err = d.ExecContext(ctx, `UPDATE ingest_seen SET kind=?, size=?, mtime=?, seen_at=? WHERE path=?`, pendingKind, size, mtime, now, path)
+	return false, err
+}
+
+// markStableSignatureConfirmed is like markStableSignature but requires two
+// consecutive stable windows before returning ready=true:
+// pendingKind --(stable window 1)--> armedKind --(stable window 2)--> readyKind.
+func (w *Watcher) markStableSignatureConfirmed(ctx context.Context, path, pendingKind, armedKind, readyKind string, size, mtime int64, stableFor time.Duration) (bool, error) {
+	d := w.jobs.DB().SQL
+	now := time.Now().Unix()
+	stableSecs := int64(stableFor.Seconds())
+	if stableSecs < 1 {
+		stableSecs = 1
+	}
+
+	var oldKind string
+	var oldSize int64
+	var oldMtime int64
+	var lastChangedAt int64
+	err := d.QueryRowContext(ctx, `SELECT kind,size,mtime,seen_at FROM ingest_seen WHERE path=?`, path).Scan(&oldKind, &oldSize, &oldMtime, &lastChangedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			_, err2 := d.ExecContext(ctx, `INSERT INTO ingest_seen(path,kind,size,mtime,seen_at) VALUES(?,?,?,?,?)`, path, pendingKind, size, mtime, now)
+			return false, err2
+		}
+		return false, err
+	}
+
+	if oldKind == readyKind {
+		return false, nil
+	}
+
+	if oldSize != size || oldMtime != mtime {
+		_, err = d.ExecContext(ctx, `UPDATE ingest_seen SET kind=?, size=?, mtime=?, seen_at=? WHERE path=?`, pendingKind, size, mtime, now, path)
+		return false, err
+	}
+
+	if oldKind == pendingKind {
+		if now-lastChangedAt >= stableSecs {
+			_, err = d.ExecContext(ctx, `UPDATE ingest_seen SET kind=?, size=?, mtime=?, seen_at=? WHERE path=?`, armedKind, size, mtime, now, path)
+			return false, err
+		}
+		return false, nil
+	}
+	if oldKind == armedKind {
+		if now-lastChangedAt >= stableSecs {
+			_, err = d.ExecContext(ctx, `UPDATE ingest_seen SET kind=?, size=?, mtime=?, seen_at=? WHERE path=?`, readyKind, size, mtime, now, path)
+			return err == nil, err
+		}
+		return false, nil
+	}
+
 	_, err = d.ExecContext(ctx, `UPDATE ingest_seen SET kind=?, size=?, mtime=?, seen_at=? WHERE path=?`, pendingKind, size, mtime, now, path)
 	return false, err
 }
