@@ -413,45 +413,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 						return
 					}
 					emitProgress(100)
-
-					// Persist PAR2 files (keep) if enabled.
-					if parKeep && parDir != "" {
-						relDir, err := filepath.Rel(outDir, filepath.Dir(finalNZB))
-						if err != nil {
-							relDir = ""
-						}
-						keepDir := filepath.Join(strings.TrimSpace(cfg.Upload.Par.Dir), relDir)
-						_ = os.MkdirAll(keepDir, 0o755)
-						entries, _ := os.ReadDir(parDir)
-						moved := 0
-						for _, e := range entries {
-							name := e.Name()
-							if !strings.HasSuffix(strings.ToLower(name), ".par2") {
-								continue
-							}
-							src := filepath.Join(parDir, name)
-							dst := filepath.Join(keepDir, name)
-							_ = os.Remove(dst)
-							if err := os.Rename(src, dst); err == nil {
-								moved++
-								continue
-							}
-							// Cross-filesystem fallback: copy then remove.
-							if in, err := os.Open(src); err == nil {
-								defer in.Close()
-								tmp := dst + ".tmp"
-								_ = os.Remove(tmp)
-								if out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
-									_, _ = io.Copy(out, in)
-									_ = out.Close()
-									_ = os.Rename(tmp, dst)
-									_ = os.Remove(src)
-									moved++
-								}
-							}
-						}
-						_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par: kept %d file(s) in %s", moved, keepDir))
-					}
+					r.persistParFiles(ctx, j.ID, cfg, parKeep, parDir, outDir, finalNZB)
 
 					_ = r.jobs.SetDone(ctx, j.ID)
 					// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
@@ -530,6 +492,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 					return
 				}
 				emitProgress(100)
+				r.persistParFiles(ctx, j.ID, cfg, parKeep, parDir, outDir, finalNZB)
 				_ = r.jobs.SetDone(ctx, j.ID)
 				// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
 				return
@@ -621,6 +584,46 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+func (r *Runner) persistParFiles(ctx context.Context, jobID string, cfg config.Config, parKeep bool, parDir, outDir, finalNZB string) {
+	if !parKeep || strings.TrimSpace(parDir) == "" {
+		return
+	}
+	relDir, err := filepath.Rel(outDir, filepath.Dir(finalNZB))
+	if err != nil {
+		relDir = ""
+	}
+	keepDir := filepath.Join(strings.TrimSpace(cfg.Upload.Par.Dir), relDir)
+	_ = os.MkdirAll(keepDir, 0o755)
+	entries, _ := os.ReadDir(parDir)
+	moved := 0
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(strings.ToLower(name), ".par2") {
+			continue
+		}
+		src := filepath.Join(parDir, name)
+		dst := filepath.Join(keepDir, name)
+		_ = os.Remove(dst)
+		if err := os.Rename(src, dst); err == nil {
+			moved++
+			continue
+		}
+		if in, err := os.Open(src); err == nil {
+			tmp := dst + ".tmp"
+			_ = os.Remove(tmp)
+			if out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
+				_, _ = io.Copy(out, in)
+				_ = out.Close()
+				_ = os.Rename(tmp, dst)
+				_ = os.Remove(src)
+				moved++
+			}
+			_ = in.Close()
+		}
+	}
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("par: kept %d file(s) in %s", moved, keepDir))
 }
 
 func detectSeasonFromName(name string) int {
