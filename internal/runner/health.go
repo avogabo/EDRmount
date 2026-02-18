@@ -282,16 +282,21 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		return errors.New("health: PAR2 files were linked but main .par2 not found")
 	}
 
-	// par2 may expect the original relative target path embedded in PAR2 (e.g. host/inbox/media/...).
-	// Mirror that target in workdir pointing to our reconstructed outFile to avoid "Target ... missing".
-	expectedRel := filepath.Join("host", "inbox", "media", filepath.Base(outFile))
-	expectedAbs := filepath.Join(workDir, expectedRel)
-	_ = os.MkdirAll(filepath.Dir(expectedAbs), 0o755)
-	_ = os.Remove(expectedAbs)
-	if err := os.Symlink(outFile, expectedAbs); err != nil {
-		_ = copyFilePerm(outFile, expectedAbs, 0o644)
+	// par2 may expect embedded target paths from different generations.
+	// Mirror known target variants into workdir pointing to reconstructed outFile.
+	mapTarget := func(rel string) {
+		abs := filepath.Join(workDir, rel)
+		_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+		_ = os.Remove(abs)
+		if err := os.Symlink(outFile, abs); err != nil {
+			_ = copyFilePerm(outFile, abs, 0o644)
+		}
+		_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 target mapped: %s -> %s", rel, filepath.Base(outFile)))
 	}
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 target mapped: %s -> %s", expectedRel, filepath.Base(outFile)))
+	// legacy mapping
+	mapTarget(filepath.Join("host", "inbox", "media", filepath.Base(outFile)))
+	// stable mapping used by current PAR2 generation
+	mapTarget(filepath.Join("cache", "health-targets", stem+filepath.Ext(outFile)))
 
 	// par2 repair in-place
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s", "/usr/bin/par2", filepath.Base(parMain)))
@@ -487,14 +492,17 @@ func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jo
 	}
 	parBase := filepath.Join(stagingDir, stem+".par2")
 
-	// Critical: generate PAR2 against a stable target path (host media), not the
-	// ephemeral /cache/health/<job>/... file, otherwise future repairs can fail
-	// because PAR2 references an old job workdir that no longer exists.
-	stableMediaPath := mediaPath
-	if b := filepath.Base(strings.TrimSpace(mediaPath)); b != "" {
-		cand := filepath.Join("/host", "inbox", "media", b)
-		if _, err := os.Stat(cand); err == nil {
-			stableMediaPath = cand
+	// Generate PAR2 against a stable NON-media target path so future repairs do
+	// not depend on original /host/inbox/media files (they may be deleted).
+	stableDir := filepath.Join("/cache", "health-targets")
+	if err := os.MkdirAll(stableDir, 0o755); err != nil {
+		return err
+	}
+	stableMediaPath := filepath.Join(stableDir, stem+filepath.Ext(mediaPath))
+	_ = os.Remove(stableMediaPath)
+	if err := os.Link(mediaPath, stableMediaPath); err != nil {
+		if err := copyFilePerm(mediaPath, stableMediaPath, 0o644); err != nil {
+			return err
 		}
 	}
 
