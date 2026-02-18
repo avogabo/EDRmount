@@ -145,6 +145,21 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 
 	want := norm(stemMatch)
 	parCount := 0
+	linkPar := func(p string, d os.DirEntry) {
+		dst := filepath.Join(workDir, d.Name())
+		_ = os.Remove(dst)
+		// Prefer hardlink/copy (not symlink): par2 auto-discovery of volume files is more reliable with regular entries.
+		if err := os.Link(p, dst); err == nil {
+			parCount++
+			return
+		}
+		if b, err := os.ReadFile(p); err == nil {
+			if err := os.WriteFile(dst, b, 0o644); err == nil {
+				parCount++
+			}
+		}
+	}
+
 	_ = filepath.WalkDir(parRoot, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -160,20 +175,33 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		if !strings.HasPrefix(norm(base), want) {
 			return nil
 		}
-		dst := filepath.Join(workDir, d.Name())
-		_ = os.Remove(dst)
-		// Prefer hardlink/copy (not symlink): par2 auto-discovery of volume files is more reliable with regular entries.
-		if err := os.Link(p, dst); err == nil {
-			parCount++
-			return nil
-		}
-		if b, err := os.ReadFile(p); err == nil {
-			if err := os.WriteFile(dst, b, 0o644); err == nil {
-				parCount++
-			}
-		}
+		linkPar(p, d)
 		return nil
 	})
+
+	// Fallback: route by mirrored folder structure (nzb root -> par2 root), then take all .par2 in that folder.
+	// This helps when NZB and PAR2 stems differ but folder routing is consistent.
+	if parCount == 0 {
+		nzbRoot := filepath.Join("/host", "inbox", "nzb")
+		if relDir, err := filepath.Rel(nzbRoot, filepath.Dir(nzbPath)); err == nil {
+			candDir := filepath.Join(parRoot, relDir)
+			_ = filepath.WalkDir(candDir, func(p string, d os.DirEntry, err error) error {
+				if err != nil || d == nil || d.IsDir() {
+					return nil
+				}
+				n := strings.ToLower(d.Name())
+				if !strings.HasSuffix(n, ".par2") {
+					return nil
+				}
+				linkPar(p, d)
+				return nil
+			})
+			if parCount > 0 {
+				_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 fallback by routed folder matched dir=%s", candDir))
+			}
+		}
+	}
+
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: linked par2 file(s)=%d", parCount))
 	if parCount == 0 {
 		return errors.New("health repair: no local PAR2 found for this NZB (B2 requires keep-local par2)")
