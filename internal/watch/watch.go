@@ -103,6 +103,8 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 	}
 	// Avoid processing incomplete files while they are being copied into the inbox.
 	// Require the file/dir signature to be unchanged for this duration before enqueueing.
+	// NOTE: do NOT rely on file ModTime age for readiness: many copy/move tools preserve
+	// source mtimes, which can make fresh files look "old" and trigger premature uploads.
 	stableFor := 60 * time.Second
 
 	isVideo := func(name string) bool {
@@ -128,16 +130,13 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 
 			// If this looks like a season folder, enqueue it as ONE upload job (pack) and skip walking files.
 			if isSeasonDir(d.Name()) {
-				vidCount, totalBytes, maxMtime, newestAge := mediaDirSignature(path, isVideo)
+				vidCount, totalBytes, maxMtime, _ := mediaDirSignature(path, isVideo)
 				if vidCount >= 2 {
-					// Guard: if any file is still very recent, keep waiting.
-					if newestAge < stableFor {
-						return fs.SkipDir
-					}
-					// Use a synthetic stable signature for directory packs:
-					// size=video_count, mtime=max_mtime, and track growth via path|totalBytes key.
-					sigPath := path + "#bytes=" + fmt.Sprintf("%d", totalBytes)
-					if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", int64(vidCount), maxMtime, stableFor); ok {
+					// Keep a stable key per season folder and store the evolving signature
+					// (count/bytes/mtime) in the row itself. This avoids duplicate enqueues
+					// that happened when the key included totalBytes.
+					sigPath := path + "#pack"
+					if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), maxMtime, stableFor); ok {
 						_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": path})
 					}
 					return fs.SkipDir
