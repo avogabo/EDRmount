@@ -472,6 +472,7 @@ func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jo
 
 	stem := strings.TrimSuffix(filepath.Base(nzbPath), filepath.Ext(nzbPath))
 	want := norm(stem)
+	mediaStem := norm(strings.TrimSuffix(filepath.Base(mediaPath), filepath.Ext(mediaPath)))
 	relDir, _ := filepath.Rel(outRoot, filepath.Dir(nzbPath))
 	if strings.HasPrefix(relDir, "..") {
 		relDir = ""
@@ -504,7 +505,9 @@ func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jo
 			continue
 		}
 		base := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
-		if !strings.HasPrefix(norm(base), want) {
+		nb := norm(base)
+		// Remove old set by either NZB stem or media stem (legacy naming).
+		if !strings.HasPrefix(nb, want) && (mediaStem == "" || !strings.HasPrefix(nb, mediaStem)) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(keepDir, e.Name())); err == nil {
