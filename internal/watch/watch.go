@@ -111,11 +111,6 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 		low := strings.ToLower(name)
 		return strings.HasSuffix(low, ".mkv") || strings.HasSuffix(low, ".mp4") || strings.HasSuffix(low, ".avi") || strings.HasSuffix(low, ".m4v")
 	}
-	isSeasonDir := func(name string) bool {
-		low := strings.ToLower(strings.TrimSpace(name))
-		return strings.HasPrefix(low, "temporada") || strings.HasPrefix(low, "season")
-	}
-
 	walkFn := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -128,20 +123,25 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 				return fs.SkipDir
 			}
 
-			// If this looks like a season folder, enqueue it as ONE upload job (pack) and skip walking files.
-			if isSeasonDir(d.Name()) {
-				vidCount, totalBytes, maxMtime, _ := mediaDirSignature(path, isVideo)
-				if vidCount >= 2 {
-					// Keep a stable key per season folder and store the evolving signature
-					// (count/bytes/mtime) in the row itself. This avoids duplicate enqueues
-					// that happened when the key included totalBytes.
-					sigPath := path + "#pack"
-					if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), maxMtime, stableFor); ok {
-						_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": path})
+			// Generic folder handling:
+			// - wait until folder signature is stable (bytes/count/mtime)
+			// - then enqueue as folder pack
+			// - special case: if folder has exactly one video, enqueue that file path
+			//   so movie-in-folder behaves like single-file upload.
+			vidCount, totalBytes, maxMtime, _ := mediaDirSignature(path, isVideo)
+			if vidCount > 0 {
+				sigPath := path + "#pack"
+				if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), maxMtime, stableFor); ok {
+					enqueuePath := path
+					if vidCount == 1 {
+						if one, ok := singleVideoPath(path, isVideo); ok {
+							enqueuePath = one
+						}
 					}
+					_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": enqueuePath})
 				}
-				// Critical: never descend into season folders. Otherwise, while copying,
-				// early single episodes can be enqueued as individual uploads.
+				// Never descend into non-empty media folders: avoids racing uploads
+				// of individual files while a copy is still in progress.
 				return fs.SkipDir
 			}
 
@@ -194,6 +194,25 @@ func mediaDirSignature(root string, isVideo func(string) bool) (videoCount int, 
 		newestAge = 0
 	}
 	return
+}
+
+func singleVideoPath(root string, isVideo func(string) bool) (string, bool) {
+	var first string
+	count := 0
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
+		if e != nil || d.IsDir() {
+			return nil
+		}
+		if !isVideo(d.Name()) {
+			return nil
+		}
+		count++
+		if count == 1 {
+			first = p
+		}
+		return nil
+	})
+	return first, count == 1 && strings.TrimSpace(first) != ""
 }
 
 func (w *Watcher) markSeen(ctx context.Context, path, kind string, info fs.FileInfo) (bool, error) {
