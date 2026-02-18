@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -133,7 +134,10 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 				sigPath := path + "#pack"
 				if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", totalBytes+int64(vidCount), maxMtime, stableFor); ok {
 					enqueuePath := path
-					if vidCount == 1 {
+					// Only collapse folder->single file when the folder is flat (no subdirs).
+					// If subdirs exist (e.g. "Serie/Temporada 1/..."), keep folder enqueue to
+					// avoid early single-episode uploads while the season is still copying.
+					if vidCount == 1 && !hasSubdirs(path) {
 						if one, ok := singleVideoPath(path, isVideo); ok {
 							enqueuePath = one
 						}
@@ -213,6 +217,19 @@ func singleVideoPath(root string, isVideo func(string) bool) (string, bool) {
 		return nil
 	})
 	return first, count == 1 && strings.TrimSpace(first) != ""
+}
+
+func hasSubdirs(root string) bool {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *Watcher) markSeen(ctx context.Context, path, kind string, info fs.FileInfo) (bool, error) {
