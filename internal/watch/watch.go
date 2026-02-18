@@ -102,7 +102,7 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 		return nil
 	}
 	// Avoid processing incomplete files while they are being copied into the inbox.
-	// Require the file to be unchanged for this duration before enqueueing.
+	// Require the file/dir signature to be unchanged for this duration before enqueueing.
 	stableFor := 60 * time.Second
 
 	isVideo := func(name string) bool {
@@ -128,34 +128,16 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 
 			// If this looks like a season folder, enqueue it as ONE upload job (pack) and skip walking files.
 			if isSeasonDir(d.Name()) {
-				// Count videos inside (non-recursive is fine; season folder usually contains episodes directly)
-				vidCount := 0
-				_ = filepath.WalkDir(path, func(p string, dd fs.DirEntry, e error) error {
-					if e != nil {
-						return nil
-					}
-					if dd.IsDir() {
-						if p == path {
-							return nil
-						}
-						// allow subfolders inside season
-						return nil
-					}
-					if isVideo(dd.Name()) {
-						vidCount++
-						if vidCount > 1 {
-							return fs.SkipAll
-						}
-					}
-					return nil
-				})
-
+				vidCount, totalBytes, maxMtime, newestAge := mediaDirSignature(path, isVideo)
 				if vidCount >= 2 {
-					info, e := d.Info()
-					if e != nil {
-						return nil
+					// Guard: if any file is still very recent, keep waiting.
+					if newestAge < stableFor {
+						return fs.SkipDir
 					}
-					if ok, _ := w.markStable(ctx, path, "media_pack_pending", "media_pack", info, stableFor); ok {
+					// Use a synthetic stable signature for directory packs:
+					// size=video_count, mtime=max_mtime, and track growth via path|totalBytes key.
+					sigPath := path + "#bytes=" + fmt.Sprintf("%d", totalBytes)
+					if ok, _ := w.markStableSignature(ctx, sigPath, "media_pack_pending", "media_pack", int64(vidCount), maxMtime, stableFor); ok {
 						_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": path})
 					}
 					return fs.SkipDir
@@ -181,6 +163,38 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 }
 
 // markSeen returns ok=true if this path is new or changed and should be processed.
+func mediaDirSignature(root string, isVideo func(string) bool) (videoCount int, totalBytes int64, maxMtime int64, newestAge time.Duration) {
+	now := time.Now()
+	newestAge = 365 * 24 * time.Hour
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
+		if e != nil || d.IsDir() {
+			return nil
+		}
+		if !isVideo(d.Name()) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		videoCount++
+		totalBytes += info.Size()
+		mt := info.ModTime().Unix()
+		if mt > maxMtime {
+			maxMtime = mt
+		}
+		age := now.Sub(info.ModTime())
+		if age < newestAge {
+			newestAge = age
+		}
+		return nil
+	})
+	if videoCount == 0 {
+		newestAge = 0
+	}
+	return
+}
+
 func (w *Watcher) markSeen(ctx context.Context, path, kind string, info fs.FileInfo) (bool, error) {
 	d := w.jobs.DB().SQL
 	size := info.Size()
@@ -207,9 +221,11 @@ func (w *Watcher) markSeen(ctx context.Context, path, kind string, info fs.FileI
 // markStable returns ok=true once the item has been unchanged for at least stableFor.
 // We store seen_at as "last_changed_at" for pending kinds.
 func (w *Watcher) markStable(ctx context.Context, path, pendingKind, readyKind string, info fs.FileInfo, stableFor time.Duration) (bool, error) {
+	return w.markStableSignature(ctx, path, pendingKind, readyKind, info.Size(), info.ModTime().Unix(), stableFor)
+}
+
+func (w *Watcher) markStableSignature(ctx context.Context, path, pendingKind, readyKind string, size, mtime int64, stableFor time.Duration) (bool, error) {
 	d := w.jobs.DB().SQL
-	size := info.Size()
-	mtime := info.ModTime().Unix()
 	now := time.Now().Unix()
 	stableSecs := int64(stableFor.Seconds())
 	if stableSecs < 1 {
