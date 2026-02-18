@@ -132,6 +132,13 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 			// - then enqueue as folder pack
 			// - special case: if folder has exactly one video, enqueue that file path
 			//   so movie-in-folder behaves like single-file upload.
+			// If this folder has subfolders, treat it as a series root container and
+			// do NOT enqueue it as upload input. Let recursion process season folders.
+			subdirs, _ := dirTopology(path, isVideo)
+			if subdirs > 0 {
+				return nil
+			}
+
 			vidCount, totalBytes, maxMtime, _ := mediaDirSignature(path, isVideo)
 			if vidCount > 0 {
 				sigPath := path + "#pack"
@@ -145,9 +152,6 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 
 				if ok, _ := w.markStableSignatureConfirmed(ctx, sigPath, "media_pack_pending", "media_pack_armed", "media_pack", totalBytes+int64(vidCount), maxMtime, folderStableFor); ok {
 					enqueuePath := path
-					// Only collapse folder->single file when the folder is flat (no subdirs).
-					// If subdirs exist (e.g. "Serie/Temporada 1/..."), keep folder enqueue to
-					// avoid early single-episode uploads while the season is still copying.
 					if vidCount == 1 && !hasSubdirs(path) {
 						if one, ok := singleVideoPath(path, isVideo); ok {
 							enqueuePath = one
@@ -155,7 +159,7 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 					}
 					_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": enqueuePath})
 				}
-				// Never descend into non-empty media folders: avoids racing uploads
+				// Never descend into leaf media folders with videos: avoids racing uploads
 				// of individual files while a copy is still in progress.
 				return fs.SkipDir
 			}
@@ -230,17 +234,30 @@ func singleVideoPath(root string, isVideo func(string) bool) (string, bool) {
 	return first, count == 1 && strings.TrimSpace(first) != ""
 }
 
-func hasSubdirs(root string) bool {
+func dirTopology(root string, isVideo func(string) bool) (subdirs int, directVideos int) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return false
+		return 0, 0
 	}
 	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			return true
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if e.IsDir() {
+			subdirs++
+			continue
+		}
+		if isVideo(name) {
+			directVideos++
 		}
 	}
-	return false
+	return subdirs, directVideos
+}
+
+func hasSubdirs(root string) bool {
+	s, _ := dirTopology(root, func(string) bool { return false })
+	return s > 0
 }
 
 func hasInProgressArtifacts(root string) bool {
