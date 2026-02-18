@@ -299,10 +299,11 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	mapTarget(filepath.Join("cache", "health-targets", stem+filepath.Ext(outFile)))
 
 	// par2 repair in-place
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s", "/usr/bin/par2", filepath.Base(parMain)))
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", "/usr/bin/par2", filepath.Base(parMain), filepath.Base(outFile)))
 
 	runPar2 := func() error {
-		cmd := exec.CommandContext(ctx, "par2", "r", parMain)
+		// Use explicit target file to avoid relying only on historical embedded paths.
+		cmd := exec.CommandContext(ctx, "par2", "r", parMain, outFile)
 		cmd.Dir = workDir
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
