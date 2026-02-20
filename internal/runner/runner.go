@@ -263,7 +263,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			_ = os.MkdirAll(parStagingDir, 0o755)
 
 			parBase := filepath.Join(parStagingDir, base)
-			args := []string{"c", fmt.Sprintf("-rr%d", cfg.Upload.Par.RedundancyPercent), "-rf20", parBase + ".par2"}
+			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), "-B/", parBase + ".par2"}
 			args = append(args, sourceFiles...)
 			if parEnabled {
 				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par2: generating parity"))
