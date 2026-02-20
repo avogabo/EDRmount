@@ -111,7 +111,7 @@ func Default() Config {
 		Library:  (Library{Enabled: true, UppercaseFolders: true}).withDefaults(),
 		Metadata: (Metadata{}).withDefaults(),
 		Plex:     (Plex{}).withDefaults(),
-		Upload:   Upload{Provider: "ngpost", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: true, Dir: "/host/inbox/par2"}},
+		Upload:   Upload{Provider: "ngpost", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: false, Dir: ""}},
 		Rename: Rename{Provider: "filebot", FileBot: FileBot{
 			Enabled:      true,
 			Binary:       "/usr/local/bin/filebot",

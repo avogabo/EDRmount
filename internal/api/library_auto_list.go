@@ -135,17 +135,18 @@ func (s *Server) registerLibraryAutoListRoutes() {
 					continue
 				}
 
-				// It's a file directly under this dir; find its file_idx & size.
-				// We resolve idx by looking up nzb_files filename/subject basename match.
-				name := child
+				// It's a file directly under this dir.
+				// Resolve exact file_idx from library_resolved virtual_path (authoritative for auto view),
+				// then read size from nzb_files by (import_id, idx).
 				var idx int
 				var bytes int64
-				// best-effort: match by mkv filename
-				_ = s.jobs.DB().SQL.QueryRowContext(r.Context(), `SELECT idx,total_bytes FROM nzb_files WHERE import_id=? AND filename=? LIMIT 1`, importID, name).Scan(&idx, &bytes)
+				_ = s.jobs.DB().SQL.QueryRowContext(r.Context(), `SELECT file_idx FROM library_resolved WHERE import_id=? AND virtual_path=? LIMIT 1`, importID, vr).Scan(&idx)
+				if idx >= 0 {
+					_ = s.jobs.DB().SQL.QueryRowContext(r.Context(), `SELECT total_bytes FROM nzb_files WHERE import_id=? AND idx=? LIMIT 1`, importID, idx).Scan(&bytes)
+				}
 				if bytes == 0 {
-					// fallback by subject basename
-					var subj string
-					_ = s.jobs.DB().SQL.QueryRowContext(r.Context(), `SELECT idx,subject,total_bytes FROM nzb_files WHERE import_id=? LIMIT 2000`, importID).Scan(&idx, &subj, &bytes)
+					// fallback by filename for older rows
+					_ = s.jobs.DB().SQL.QueryRowContext(r.Context(), `SELECT idx,total_bytes FROM nzb_files WHERE import_id=? AND filename=? LIMIT 1`, importID, child).Scan(&idx, &bytes)
 				}
 				addFile(child, childRel, importID, idx, bytes)
 			}
