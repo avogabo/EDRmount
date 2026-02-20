@@ -193,6 +193,10 @@ func seedManualFromNZB(ctx context.Context, tx *sql.Tx, importID, nzbPath string
 		if strings.TrimSpace(fn) == "" {
 			fn = fmt.Sprintf("file_%04d.bin", idx)
 		}
+		low := strings.ToLower(strings.TrimSpace(fn))
+		if strings.HasSuffix(low, ".par2") {
+			continue
+		}
 		itemID := uuid.NewString()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO manual_items(id,dir_id,label,import_id,file_idx) VALUES(?,?,?,?,?)`, itemID, leaf, fn, importID, idx); err != nil {
 			continue
@@ -230,6 +234,10 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 		name := strings.TrimSpace(fn)
 		if name == "" {
 			name = filepath.Base(subj)
+		}
+		lowName := strings.ToLower(name)
+		if strings.HasSuffix(lowName, ".par2") {
+			continue
 		}
 		fileCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 		g := library.GuessFromFilename(name)

@@ -33,12 +33,13 @@ type Runner struct {
 
 	NgPostPath string // default: /usr/local/bin/ngpost
 	NyuuPath   string // default: /usr/local/bin/nyuu
+	Par2Path   string // default: /usr/local/bin/par2j64
 
 	GetConfig func() config.Config // optional live config provider
 }
 
 func New(j *jobs.Store) *Runner {
-	return &Runner{jobs: j, UploadConcurrency: 1, PollInterval: 1 * time.Second, Mode: "stub", NgPostPath: "/usr/local/bin/ngpost", NyuuPath: "/usr/local/bin/nyuu"}
+	return &Runner{jobs: j, UploadConcurrency: 1, PollInterval: 1 * time.Second, Mode: "stub", NgPostPath: "/usr/local/bin/ngpost", NyuuPath: "/usr/local/bin/nyuu", Par2Path: "/usr/local/bin/par2j64"}
 }
 
 func (r *Runner) Run(ctx context.Context) {
@@ -149,9 +150,9 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			cfg = r.GetConfig()
 		}
 		ng := cfg.NgPost
-		provider := strings.ToLower(strings.TrimSpace(cfg.Upload.Provider))
-		if provider == "" {
-			provider = "ngpost"
+		provider := "nyuu"
+		if strings.ToLower(strings.TrimSpace(cfg.Upload.Provider)) != "nyuu" {
+			_ = r.jobs.AppendLog(ctx, j.ID, "upload: forcing provider=nyuu (ngpost disabled)")
 		}
 
 		// If upload path is a directory with subdirectories, treat each subdirectory as an independent season pack.
@@ -213,6 +214,17 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			return
 		}
 
+		sourceFiles, err := collectUploadFiles(p.Path)
+		if err != nil || len(sourceFiles) == 0 {
+			msg := "no files found to upload"
+			if err != nil {
+				msg = err.Error()
+			}
+			_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+			_ = r.jobs.SetFailed(ctx, j.ID, msg)
+			return
+		}
+
 		lastProgress := -1
 		emitProgress := func(p int) {
 			if p < 0 {
@@ -247,44 +259,9 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			emitProgress(5)
 			_ = os.MkdirAll(parStagingDir, 0o755)
 
-			// NOTE: par2cmdline ignores symlinks as input files, so we must pass the real file path.
-			// We still generate parity into /cache (parStagingDir), so we avoid copying the large media file.
 			parBase := filepath.Join(parStagingDir, base)
-			inputPath := p.Path
-			args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent)}
-
-			if st, err := os.Stat(inputPath); err == nil && st.IsDir() {
-				// par2 cannot create from a directory path directly; pass a file list relative to base path.
-				files := make([]string, 0, 64)
-				_ = filepath.WalkDir(inputPath, func(fp string, d os.DirEntry, err error) error {
-					if err != nil || d == nil {
-						return nil
-					}
-					name := d.Name()
-					if strings.HasPrefix(name, ".") {
-						if d.IsDir() {
-							return filepath.SkipDir
-						}
-						return nil
-					}
-					if d.IsDir() {
-						return nil
-					}
-					files = append(files, fp)
-					return nil
-				})
-				if len(files) == 0 {
-					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: par2 skipped: no files found in directory input")
-					parEnabled = false
-				} else {
-					args = append(args, "-B/", parBase+".par2")
-					args = append(args, files...)
-				}
-			} else {
-				// Use par2cmdline-compatible interface for single files.
-				// par2 enforces a basepath; set it to the directory containing the source file.
-				args = append(args, "-B/", parBase+".par2", inputPath)
-			}
+			args := []string{"c", fmt.Sprintf("-rr%d", cfg.Upload.Par.RedundancyPercent), "-rf20", parBase + ".par2"}
+			args = append(args, sourceFiles...)
 			if parEnabled {
 				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("par2: generating parity"))
 			}
@@ -334,7 +311,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 					if clean != "" {
 						_ = r.jobs.AppendLog(ctx, j.ID, clean)
 					}
-				}, "par2", args...)
+				}, r.par2Binary(), args...)
 			}
 			stopTick()
 			if !parEnabled {
@@ -348,162 +325,74 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			}
 		}
 
-		// Provider implementation
+		// Provider implementation (nyuu-only, classic format)
 		if provider == "nyuu" {
-			if ng.Enabled && ng.Host != "" && ng.User != "" && ng.Pass != "" && ng.Groups != "" {
-				args := []string{"-h", ng.Host, "-P", fmt.Sprintf("%d", ng.Port)}
-				if ng.SSL {
-					args = append(args, "-S")
-				}
-				if ng.Connections > 0 {
-					args = append(args, "-n", fmt.Sprintf("%d", ng.Connections))
-				}
-				if ng.Groups != "" {
-					args = append(args, "-g", ng.Groups)
-				}
-				// Obfuscation (safe for pipeline): randomize article metadata only.
-				// Keep filename/yenc-name stable so downstream import/mount keeps working.
-				args = append(args,
-					"--subject", "${rand(40)} yEnc ({part}/{parts})",
-					"--nzb-subject", `"{filename}" yEnc ({part}/{parts})`,
-					"--message-id", "${rand(24)}-${rand(12)}@nyuu",
-					"--from", "poster <poster@example.com>",
-				)
-				// NZB output (staging)
-				args = append(args, "-o", stagingNZB, "-O")
-				// Auth
-				args = append(args, "-u", ng.User, "-p", ng.Pass)
-				// Input file/dir (nyuu supports directories; keep subdirs)
-				args = append(args, "-r", "keep")
-				// NOTE: PAR2 is kept locally only (not uploaded as part of the release).
-				args = append(args, p.Path)
-
-				emitPhase("Subiendo a Usenet (Uploading)")
-				emitProgress(1)
-				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("nyuu: %s %s", r.NyuuPath, strings.Join(args[:min(10, len(args))], " ")))
-				err := runCommand(ctx, func(line string) {
-					clean := sanitizeLine(line, ng.Pass)
-					_ = r.jobs.AppendLog(ctx, j.ID, clean)
-					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-							emitProgress(n)
-						}
-					}
-				}, r.NyuuPath, args...)
-				if err != nil {
-					msg := err.Error()
-					if strings.Contains(strings.ToLower(msg), "illegal instruction") {
-						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: nyuu crashed with illegal instruction; retrying with ngpost")
-						provider = "ngpost"
-					} else {
-						_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-						_ = r.jobs.SetFailed(ctx, j.ID, msg)
-						return
-					}
-				}
-				if provider == "nyuu" {
-					// Move staging NZB into the watched NZB inbox only after the uploader has finished.
-					emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
-					emitProgress(99)
-					_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
-					if err != nil {
-						msg := err.Error()
-						_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
-						_ = r.jobs.SetFailed(ctx, j.ID, msg)
-						return
-					}
-					emitProgress(100)
-					r.persistParFiles(ctx, j.ID, cfg, parKeep, parDir, outDir, finalNZB)
-
-					_ = r.jobs.SetDone(ctx, j.ID)
-					// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
-					return
-				}
-			}
-			if ng.Enabled && provider == "nyuu" {
-				_ = r.jobs.AppendLog(ctx, j.ID, "nyuu selected but missing config fields (need host/user/pass/groups)")
-			}
-		}
-		if provider != "nyuu" {
-			// Default: ngpost
-			if ng.Enabled && ng.Host != "" && ng.User != "" && ng.Pass != "" && ng.Groups != "" {
-				args := []string{"-i", p.Path, "-o", stagingNZB, "-h", ng.Host, "-P", fmt.Sprintf("%d", ng.Port)}
-				if ng.SSL {
-					args = append(args, "-s")
-				}
-				if ng.Connections > 0 {
-					args = append(args, "-n", fmt.Sprintf("%d", ng.Connections))
-				}
-				if ng.Threads > 0 {
-					args = append(args, "-t", fmt.Sprintf("%d", ng.Threads))
-				}
-				if ng.Groups != "" {
-					args = append(args, "-g", ng.Groups)
-				}
-				if ng.Obfuscate {
-					args = append(args, "-x")
-				}
-				if ng.TmpDir != "" {
-					args = append(args, "--tmp_dir", ng.TmpDir)
-				}
-				args = append(args, "-u", ng.User, "-p", ng.Pass, "--disp_progress", "files")
-
-				emitPhase("Subiendo a Usenet (Uploading)")
-				emitProgress(1)
-				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("ngpost: %s %s", r.NgPostPath, strings.Join(args[:min(10, len(args))], " ")))
-
-				// ngpost sometimes auto-renames the NZB if the requested output already exists.
-				// We capture the actual nzb path from its output (line like: "nzb file: /path/file_2.nzb").
-				actualNZB := ""
-				err := runCommand(ctx, func(line string) {
-					clean := sanitizeLine(line, ng.Pass)
-					_ = r.jobs.AppendLog(ctx, j.ID, clean)
-					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-							emitProgress(n)
-						}
-					}
-					l := strings.ToLower(clean)
-					if idx := strings.Index(l, "nzb file:"); idx >= 0 {
-						p := strings.TrimSpace(clean[idx+len("nzb file:"):])
-						if strings.HasSuffix(strings.ToLower(p), ".nzb") {
-							actualNZB = p
-						}
-					}
-				}, r.NgPostPath, args...)
-				if err != nil {
-					msg := err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				// ngpost sometimes auto-renames the NZB. Prefer the actual produced staging path.
-				produced := stagingNZB
-				if actualNZB != "" {
-					produced = actualNZB
-				}
-				emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
-				emitProgress(99)
-				_, err = moveNZBStagingToFinal(produced, finalNZB)
-				if err != nil {
-					msg := err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				emitProgress(100)
-				r.persistParFiles(ctx, j.ID, cfg, parKeep, parDir, outDir, finalNZB)
-				_ = r.jobs.SetDone(ctx, j.ID)
-				// Import is handled by the NZB watcher (watch.nzb). We just drop the NZB into the inbox.
+			if !ng.Enabled || ng.Host == "" || ng.User == "" || ng.Pass == "" || ng.Groups == "" {
+				msg := "nyuu config incomplete (need ngpost.enabled host/user/pass/groups as server source)"
+				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+				_ = r.jobs.SetFailed(ctx, j.ID, msg)
 				return
 			}
-			if ng.Enabled {
-				_ = r.jobs.AppendLog(ctx, j.ID, "ngpost enabled but missing config fields (need host/user/pass/groups)")
+
+			uploadFiles := make([]string, 0, len(sourceFiles)+8)
+			uploadFiles = append(uploadFiles, sourceFiles...)
+			if parEnabled && parDir != "" {
+				parFiles, _ := filepath.Glob(filepath.Join(parDir, "*.par2"))
+				uploadFiles = append(uploadFiles, parFiles...)
 			}
+			if len(uploadFiles) == 0 {
+				msg := "nyuu upload has no files"
+				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+				_ = r.jobs.SetFailed(ctx, j.ID, msg)
+				return
+			}
+
+			nyuuCfg, err := writeNyuuClassicConfig(cacheDir, j.ID, ng)
+			if err != nil {
+				msg := "cannot write nyuu classic config: " + err.Error()
+				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+				_ = r.jobs.SetFailed(ctx, j.ID, msg)
+				return
+			}
+			args := []string{"-C", nyuuCfg, "-o", stagingNZB, "--overwrite", "--"}
+			args = append(args, uploadFiles...)
+
+			emitPhase("Subiendo a Usenet (Uploading)")
+			emitProgress(1)
+			_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("nyuu(classic): %s -C %s -o %s --overwrite -- <files:%d>", r.NyuuPath, nyuuCfg, stagingNZB, len(uploadFiles)))
+			err = runCommand(ctx, func(line string) {
+				clean := sanitizeLine(line, ng.Pass)
+				_ = r.jobs.AppendLog(ctx, j.ID, clean)
+				if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+					if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+						emitProgress(n)
+					}
+				}
+			}, r.NyuuPath, args...)
+			if err != nil {
+				msg := err.Error()
+				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+				_ = r.jobs.SetFailed(ctx, j.ID, msg)
+				return
+			}
+
+			emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
+			emitProgress(99)
+			_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
+			if err != nil {
+				msg := err.Error()
+				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
+				_ = r.jobs.SetFailed(ctx, j.ID, msg)
+				return
+			}
+			emitProgress(100)
+			r.persistParFiles(ctx, j.ID, cfg, parKeep, parDir, outDir, finalNZB)
+			_ = r.jobs.SetDone(ctx, j.ID)
+			return
 		}
 
 		_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("exec upload (dev dummy): %s", p.Path))
-		err := runCommand(ctx, func(line string) {
+		err = runCommand(ctx, func(line string) {
 			_ = r.jobs.AppendLog(ctx, j.ID, line)
 		}, "bash", "-lc", fmt.Sprintf("echo uploading '%s'; sleep 2; echo done upload", p.Path))
 		if err != nil {
@@ -624,6 +513,74 @@ func (r *Runner) persistParFiles(ctx context.Context, jobID string, cfg config.C
 		}
 	}
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("par: kept %d file(s) in %s", moved, keepDir))
+}
+
+func (r *Runner) par2Binary() string {
+	if strings.TrimSpace(r.Par2Path) != "" {
+		return r.Par2Path
+	}
+	return "par2j64"
+}
+
+func collectUploadFiles(inputPath string) ([]string, error) {
+	st, err := os.Stat(inputPath)
+	if err != nil {
+		return nil, err
+	}
+	if !st.IsDir() {
+		return []string{inputPath}, nil
+	}
+	files := make([]string, 0, 64)
+	err = filepath.WalkDir(inputPath, func(fp string, d os.DirEntry, err error) error {
+		if err != nil || d == nil {
+			return nil
+		}
+		name := d.Name()
+		if strings.HasPrefix(name, ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		files = append(files, fp)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func writeNyuuClassicConfig(cacheDir, jobID string, ng config.NgPost) (string, error) {
+	dir := filepath.Join(cacheDir, "nyuu-config")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, fmt.Sprintf("%s.json", jobID))
+	cfg := map[string]any{
+		"host":               ng.Host,
+		"port":               ng.Port,
+		"ssl":                ng.SSL,
+		"user":               ng.User,
+		"password":           ng.Pass,
+		"connections":        ng.Connections,
+		"groups":             ng.Groups,
+		"nzb-subject":        "{filename}",
+		"subdirs":            "include",
+		"overwrite":          true,
+		"obfuscate-articles": true,
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func detectSeasonFromName(name string) int {

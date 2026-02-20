@@ -303,7 +303,7 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 
 	runPar2 := func() error {
 		// Use explicit target file to avoid relying only on historical embedded paths.
-		cmd := exec.CommandContext(ctx, "par2", "r", parMain, outFile)
+		cmd := exec.CommandContext(ctx, r.par2Binary(), "r", parMain, outFile)
 		cmd.Dir = workDir
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
@@ -324,6 +324,30 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 			go scanPipe("ERR: ", stderr)
 		}
 		return cmd.Wait()
+	}
+
+	resolvePar2Target := func() string {
+		rows, _ := r.jobs.DB().SQL.QueryContext(ctx, `SELECT line FROM job_logs WHERE job_id=? ORDER BY ts DESC LIMIT 500`, jobID)
+		if rows == nil {
+			return ""
+		}
+		defer rows.Close()
+		re := regexp.MustCompile(`Target:\s*"([^"]+)"\s*-\s*found\.`)
+		for rows.Next() {
+			var ln string
+			if e := rows.Scan(&ln); e != nil {
+				continue
+			}
+			m := re.FindStringSubmatch(ln)
+			if len(m) != 2 {
+				continue
+			}
+			cand := filepath.Clean(filepath.Join(workDir, strings.TrimPrefix(m[1], "/")))
+			if st, err := os.Stat(cand); err == nil && st.Mode().IsRegular() {
+				return cand
+			}
+		}
+		return ""
 	}
 
 	if err := runPar2(); err != nil {
@@ -361,6 +385,16 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	}
 
 par2OK:
+
+	// Prefer the actual file PAR2 reports as target-found. If different from outFile,
+	// copy it over outFile so upload always uses the truly repaired bytes.
+	if found := resolvePar2Target(); strings.TrimSpace(found) != "" && found != outFile {
+		if err := copyFilePerm(found, outFile, 0o644); err == nil {
+			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: normalized repaired target from %s -> %s", found, outFile))
+		} else {
+			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: WARN normalize repaired target failed: %v", err))
+		}
+	}
 
 	// Now re-upload the repaired MKV and generate a CLEAN NZB (no PAR2 included).
 	repairedNZBTmp := filepath.Join(workDir, stem+".repaired.nzb")
@@ -544,13 +578,13 @@ func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jo
 	}
 
 	args := []string{"c", fmt.Sprintf("-r%d", cfg.Upload.Par.RedundancyPercent), "-B/", parBase, stableMediaPath}
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 regenerate: par2 %s", strings.Join(args, " ")))
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 regenerate: %s %s", r.par2Binary(), strings.Join(args, " ")))
 	if err := runCommand(ctx, func(line string) {
 		clean := strings.TrimSpace(line)
 		if clean != "" {
 			_ = r.jobs.AppendLog(ctx, jobID, clean)
 		}
-	}, "par2", args...); err != nil {
+	}, r.par2Binary(), args...); err != nil {
 		return err
 	}
 
