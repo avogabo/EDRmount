@@ -15,7 +15,9 @@ RUN go build -ldflags "-X github.com/gaby/EDRmount/internal/version.Version=${VE
 RUN go install github.com/javi11/nzb-repair@v0.0.3
 
 FROM ubuntu:jammy AS runtime
-RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 openjdk-17-jre-headless xz-utils mediainfo libmediainfo0v5 libmms0 locales && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates fuse3 curl libglib2.0-0 par2 openjdk-17-jre-headless xz-utils mediainfo libmediainfo0v5 libmms0 locales \
+  && (apt-get install -y --no-install-recommends wine64 || true) \
+  && rm -rf /var/lib/apt/lists/*
 
 # ngpost's bundled Qt expects OpenSSL 1.1 (libcrypto.so.1.1/libssl.so.1.1).
 # Ubuntu jammy ships OpenSSL 3, so we temporarily add focal to install libssl1.1.
@@ -49,8 +51,10 @@ COPY --from=build /out/edrmount /usr/local/bin/edrmount
 COPY --from=build /go/bin/nzb-repair /usr/local/bin/nzb-repair
 # Install turbo par2 tools (par2create/par2/...) overriding base package when present
 COPY --from=par2build /out/usr/local/bin/ /usr/local/bin/
-# par2j64 launcher (tries Windows par2j64.exe via wine if available, else falls back to turbo par2)
+# Bundle par2j64.exe + launcher (tries Windows exe via wine if available, else falls back to turbo par2)
+COPY docker/bin/par2j64.exe /tmp/par2j64.exe
 RUN mkdir -p /opt/par2j64 /config/tools \
+  && mv /tmp/par2j64.exe /opt/par2j64/par2j64.exe \
   && printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
