@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -525,10 +526,26 @@ func (r *Runner) persistParFiles(ctx context.Context, jobID string, cfg config.C
 }
 
 func (r *Runner) par2Binary() string {
-	if strings.TrimSpace(r.Par2Path) != "" {
-		return r.Par2Path
+	candidates := []string{}
+	if p := strings.TrimSpace(r.Par2Path); p != "" {
+		candidates = append(candidates, p)
 	}
-	return "par2j64"
+	candidates = append(candidates, "/usr/local/bin/par2j64", "/usr/local/bin/par2", "par2")
+	for _, c := range candidates {
+		if strings.TrimSpace(c) == "" {
+			continue
+		}
+		if strings.HasPrefix(c, "/") {
+			if st, err := os.Stat(c); err == nil && !st.IsDir() {
+				return c
+			}
+			continue
+		}
+		if p, err := exec.LookPath(c); err == nil && strings.TrimSpace(p) != "" {
+			return p
+		}
+	}
+	return "par2"
 }
 
 func collectUploadFiles(inputPath string) ([]string, error) {

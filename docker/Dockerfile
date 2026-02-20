@@ -49,6 +49,22 @@ COPY --from=build /out/edrmount /usr/local/bin/edrmount
 COPY --from=build /go/bin/nzb-repair /usr/local/bin/nzb-repair
 # Install turbo par2 tools (par2create/par2/...) overriding base package when present
 COPY --from=par2build /out/usr/local/bin/ /usr/local/bin/
+# par2j64 launcher (tries Windows par2j64.exe via wine if available, else falls back to turbo par2)
+RUN mkdir -p /opt/par2j64 /config/tools \
+  && printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'EXE1="/opt/par2j64/par2j64.exe"' \
+  'EXE2="/config/tools/par2j64.exe"' \
+  'if [ -f "$EXE1" ]; then EXE="$EXE1"; elif [ -f "$EXE2" ]; then EXE="$EXE2"; else EXE=""; fi' \
+  'if [ -n "$EXE" ]; then' \
+  '  if command -v wine64 >/dev/null 2>&1; then exec wine64 "$EXE" "$@"; fi' \
+  '  if command -v wine >/dev/null 2>&1; then exec wine "$EXE" "$@"; fi' \
+  'fi' \
+  'if [ -x /usr/local/bin/par2 ]; then exec /usr/local/bin/par2 "$@"; fi' \
+  'exec par2 "$@"' \
+  > /usr/local/bin/par2j64 \
+  && chmod +x /usr/local/bin/par2j64
 
 # ---- ngpost (bundled AppImage contents) ----
 # We bundle the extracted squashfs-root to avoid system Qt deps.
