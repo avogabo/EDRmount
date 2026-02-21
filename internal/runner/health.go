@@ -68,6 +68,11 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	} else {
 		return fmt.Errorf("read nzb: %w", err)
 	}
+	// nzb-repair parser is strict with XML namespaces in some NZB variants.
+	// Normalize temp NZB to namespace-free classic tags for maximum compatibility.
+	if err := normalizeNZBForRepair(workNZB); err != nil {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: WARN nzb normalize for repair failed: "+err.Error())
+	}
 
 	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
 	repairedNZBTmp := filepath.Join(workDir, stem+".repaired.nzb")
@@ -305,6 +310,21 @@ func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jo
 	_ = os.RemoveAll(stagingDir)
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 refreshed (removed=%d new=%d dir=%s)", removed, moved, keepDir))
 	return nil
+}
+
+func normalizeNZBForRepair(path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	s := string(b)
+	// prefixed namespace style -> plain tags
+	s = strings.ReplaceAll(s, "<ns0:", "<")
+	s = strings.ReplaceAll(s, "</ns0:", "</")
+	s = strings.ReplaceAll(s, "xmlns:ns0=\"http://www.newzbin.com/DTD/2003/nzb\"", "")
+	// default namespace style -> no namespace
+	s = strings.ReplaceAll(s, "xmlns=\"http://www.newzbin.com/DTD/2003/nzb\"", "")
+	return os.WriteFile(path, []byte(s), 0o644)
 }
 
 func writeNZBRepairConfig(path string, cfg config.Config) error {
