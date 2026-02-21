@@ -77,11 +77,13 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if err := writeNZBRepairConfig(repairCfg, cfg); err != nil {
 		return fmt.Errorf("health: nzb-repair config: %w", err)
 	}
+	repairTmpDir := filepath.Join(workDir, "tmp")
+	_ = os.MkdirAll(repairTmpDir, 0o755)
 	_ = r.jobs.AppendLog(ctx, jobID, "health: nzb-repair starting")
 	if err := runCommand(ctx, func(line string) {
 		clean := sanitizeLine(line, cfg.NgPost.Pass)
 		_ = r.jobs.AppendLog(ctx, jobID, clean)
-	}, "nzb-repair", "-c", repairCfg, "-o", repairedNZBTmp, "--tmp-dir", workDir, workNZB); err != nil {
+	}, "nzb-repair", "-c", repairCfg, "-o", repairedNZBTmp, "--tmp-dir", repairTmpDir, workNZB); err != nil {
 		return fmt.Errorf("health: nzb-repair failed: %w", err)
 	}
 	if st, err := os.Stat(repairedNZBTmp); err != nil || st.Size() == 0 {
