@@ -333,7 +333,7 @@ func writeNZBRepairConfig(path string, cfg config.Config) error {
 		return errors.New("missing download/upload provider credentials for nzb-repair")
 	}
 
-	yaml := fmt.Sprintf("download_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\nupload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\n",
+	yaml := fmt.Sprintf("par2_exe: /usr/local/bin/par2\ndownload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\nupload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\n",
 		downHost, downPort, downUser, downPass, downConn, cfg.Download.SSL,
 		upHost, upPort, upUser, upPass, upConn, cfg.NgPost.SSL,
 	)
