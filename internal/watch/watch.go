@@ -306,6 +306,12 @@ func (w *Watcher) mediaMissingInDB(ctx context.Context, mediaPath string) bool {
 	if active > 0 {
 		return false
 	}
+	// Cooldown guard: if this exact media path was uploaded recently (any result), don't re-enqueue on every scan.
+	var recent int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(1) FROM jobs WHERE type=? AND payload_json LIKE ? AND created_at > ?`, jobs.TypeUpload, "%\"path\":\""+mediaPath+"\"%", time.Now().Unix()-6*3600).Scan(&recent)
+	if recent > 0 {
+		return false
+	}
 	// If any imported NZB file already references this filename, it's already added.
 	var exists int
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(1) FROM nzb_files WHERE lower(filename)=lower(?) LIMIT 1`, name).Scan(&exists)
