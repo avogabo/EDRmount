@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -324,6 +325,34 @@ func normalizeNZBForRepair(path string) error {
 	s = strings.ReplaceAll(s, "xmlns:ns0=\"http://www.newzbin.com/DTD/2003/nzb\"", "")
 	// default namespace style -> no namespace
 	s = strings.ReplaceAll(s, "xmlns=\"http://www.newzbin.com/DTD/2003/nzb\"", "")
+
+	// Normalize subject attributes to classic quoted yEnc style so nzb-repair can
+	// consistently detect filenames (.par2/.mkv/etc).
+	reSubject := regexp.MustCompile(`subject="([^"]+)"`)
+	reToken := regexp.MustCompile(`(?i)([^\s"<>]+\.(par2|mkv|mp4|avi|m4v|mov|ts|m2ts|wmv))`)
+	s = reSubject.ReplaceAllStringFunc(s, func(attr string) string {
+		m := reSubject.FindStringSubmatch(attr)
+		if len(m) != 2 {
+			return attr
+		}
+		raw := m[1]
+		fname := ""
+		if q := regexp.MustCompile(`"([^"]+\.[A-Za-z0-9]+)"`).FindStringSubmatch(raw); len(q) == 2 {
+			fname = strings.TrimSpace(q[1])
+		} else if t := reToken.FindStringSubmatch(raw); len(t) >= 2 {
+			fname = strings.TrimSpace(t[1])
+		} else {
+			low := strings.ToLower(strings.TrimSpace(raw))
+			if strings.HasSuffix(low, ".par2") || strings.HasSuffix(low, ".mkv") {
+				fname = strings.TrimSpace(raw)
+			}
+		}
+		if fname == "" {
+			return attr
+		}
+		return `subject="&quot;` + fname + `&quot; yEnc (1/1)"`
+	})
+
 	return os.WriteFile(path, []byte(s), 0o644)
 }
 
