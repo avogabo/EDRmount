@@ -36,8 +36,7 @@ func EnsureConfigFile(path string) error {
 	cfg.NgPost.Enabled = false
 	cfg.Download.Enabled = false
 	cfg.Plex.Enabled = false
-	// Health can stay enabled but scanning is off by default.
-	cfg.Health.Scan.Enabled = false
+	// Keep health scan defaults enabled so first boot already has automatic checks.
 
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

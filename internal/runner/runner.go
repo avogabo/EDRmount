@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"os"
@@ -378,7 +377,7 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				_ = r.jobs.SetFailed(ctx, j.ID, msg)
 				return
 			}
-			if err := normalizeClassicNZB(stagingNZB); err != nil {
+			if err := nzb.NormalizeCanonical(stagingNZB); err != nil {
 				msg := "classic nzb normalize failed: " + err.Error()
 				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
 				_ = r.jobs.SetFailed(ctx, j.ID, msg)
@@ -607,69 +606,6 @@ func writeNyuuClassicConfig(cacheDir, jobID string, ng config.NgPost) (string, e
 		return "", err
 	}
 	return path, nil
-}
-
-type classicNZB struct {
-	XMLName xml.Name         `xml:"http://www.newzbin.com/DTD/2003/nzb nzb"`
-	Files   []classicNZBFile `xml:"file"`
-}
-
-type classicNZBFile struct {
-	Poster   string              `xml:"poster,attr,omitempty"`
-	Subject  string              `xml:"subject,attr,omitempty"`
-	Date     int64               `xml:"date,attr,omitempty"`
-	Groups   []string            `xml:"groups>group,omitempty"`
-	Segments []classicNZBSegment `xml:"segments>segment,omitempty"`
-}
-
-type classicNZBSegment struct {
-	Bytes  int64  `xml:"bytes,attr,omitempty"`
-	Number int    `xml:"number,attr,omitempty"`
-	ID     string `xml:",chardata"`
-}
-
-func normalizeClassicNZB(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	doc, err := nzb.Parse(f)
-	_ = f.Close()
-	if err != nil {
-		return err
-	}
-
-	out := classicNZB{Files: make([]classicNZBFile, 0, len(doc.Files))}
-	for _, nf := range doc.Files {
-		cf := classicNZBFile{
-			Poster:   nf.Poster,
-			Subject:  nf.Subject,
-			Date:     nf.Date,
-			Groups:   nf.Groups,
-			Segments: make([]classicNZBSegment, 0, len(nf.Segments)),
-		}
-		for _, s := range nf.Segments {
-			cf.Segments = append(cf.Segments, classicNZBSegment{Bytes: s.Bytes, Number: s.Number, ID: strings.TrimSpace(s.ID)})
-		}
-		out.Files = append(out.Files, cf)
-	}
-
-	xmlBytes, err := xml.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
-	}
-	// Keep classic/default namespace form (<nzb xmlns="...">) for broad parser compatibility.
-	s := string(xmlBytes)
-	s = strings.ReplaceAll(s, "<ns0:", "<")
-	s = strings.ReplaceAll(s, "</ns0:", "</")
-	s = strings.ReplaceAll(s, "xmlns:ns0=", "xmlns=")
-	xmlBytes = []byte(s)
-	xmlBytes = append([]byte(xml.Header), xmlBytes...)
-	tmp := path + ".classic.tmp"
-	if err := os.WriteFile(tmp, xmlBytes, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
 }
 
 func detectSeasonFromName(name string) int {
