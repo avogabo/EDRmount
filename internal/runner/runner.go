@@ -658,6 +658,12 @@ func normalizeClassicNZB(path string) error {
 	if err != nil {
 		return err
 	}
+	// Keep classic/default namespace form (<nzb xmlns="...">) for broad parser compatibility.
+	s := string(xmlBytes)
+	s = strings.ReplaceAll(s, "<ns0:", "<")
+	s = strings.ReplaceAll(s, "</ns0:", "</")
+	s = strings.ReplaceAll(s, "xmlns:ns0=", "xmlns=")
+	xmlBytes = []byte(s)
 	xmlBytes = append([]byte(xml.Header), xmlBytes...)
 	tmp := path + ".classic.tmp"
 	if err := os.WriteFile(tmp, xmlBytes, 0o644); err != nil {
