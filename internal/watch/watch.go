@@ -176,6 +176,12 @@ func (w *Watcher) scanMedia(ctx context.Context) error {
 		}
 		if ok, _ := w.markStable(ctx, path, "media_pending", "media", info, stableFor); ok {
 			_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": path})
+			return nil
+		}
+		// Reconciliation mode: if media file exists but there is no NZB/import record,
+		// enqueue upload even when ingest_seen is already marked as processed.
+		if w.mediaMissingInDB(ctx, path) {
+			_, _ = w.jobs.Enqueue(ctx, jobs.TypeUpload, map[string]string{"path": path})
 		}
 		return nil
 	}
@@ -283,6 +289,27 @@ func hasInProgressArtifacts(root string) bool {
 		return nil
 	})
 	return found
+}
+
+func (w *Watcher) mediaMissingInDB(ctx context.Context, mediaPath string) bool {
+	if w.jobs == nil || w.jobs.DB() == nil || w.jobs.DB().SQL == nil {
+		return false
+	}
+	db := w.jobs.DB().SQL
+	name := filepath.Base(strings.TrimSpace(mediaPath))
+	if name == "" {
+		return false
+	}
+	// If there is already an active upload for this exact path, don't enqueue again.
+	var active int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(1) FROM jobs WHERE type=? AND state IN ('queued','running') AND payload_json LIKE ?`, jobs.TypeUpload, "%\"path\":\""+mediaPath+"\"%").Scan(&active)
+	if active > 0 {
+		return false
+	}
+	// If any imported NZB file already references this filename, it's already added.
+	var exists int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(1) FROM nzb_files WHERE lower(filename)=lower(?) LIMIT 1`, name).Scan(&exists)
+	return exists == 0
 }
 
 func (w *Watcher) markSeen(ctx context.Context, path, kind string, info fs.FileInfo) (bool, error) {
