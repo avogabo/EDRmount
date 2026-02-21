@@ -384,9 +384,29 @@ func writeNZBRepairConfig(path string, cfg config.Config) error {
 		return errors.New("missing download/upload provider credentials for nzb-repair")
 	}
 
-	yaml := fmt.Sprintf("par2_exe: /usr/local/bin/par2\ndownload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\nupload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\n",
+	groups := strings.TrimSpace(cfg.NgPost.Groups)
+	groupsYaml := ""
+	if groups != "" {
+		parts := strings.Split(groups, ",")
+		clean := make([]string, 0, len(parts))
+		for _, p := range parts {
+			g := strings.TrimSpace(p)
+			if g != "" {
+				clean = append(clean, g)
+			}
+		}
+		if len(clean) > 0 {
+			groupsYaml = "    groups:\n"
+			for _, g := range clean {
+				groupsYaml += fmt.Sprintf("      - %s\n", g)
+			}
+		}
+	}
+
+	yaml := fmt.Sprintf("par2_exe: /usr/local/bin/par2\ndownload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\nupload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\n%s",
 		downHost, downPort, downUser, downPass, downConn, cfg.Download.SSL,
 		upHost, upPort, upUser, upPass, upConn, cfg.NgPost.SSL,
+		groupsYaml,
 	)
 	return os.WriteFile(path, []byte(yaml), 0o600)
 }
