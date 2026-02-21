@@ -1,24 +1,16 @@
 package runner
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
-	"github.com/gaby/EDRmount/internal/importer"
-	"github.com/gaby/EDRmount/internal/nntp"
-	"github.com/gaby/EDRmount/internal/nzb"
-	"github.com/gaby/EDRmount/internal/yenc"
 )
 
 type healthRepairPayload struct {
@@ -77,331 +69,25 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		return fmt.Errorf("read nzb: %w", err)
 	}
 
-	// Parse NZB (we only handle a single MKV for now)
-	f, err := os.Open(workNZB)
-	if err != nil {
-		return err
-	}
-	doc, err := nzb.Parse(f)
-	_ = f.Close()
-	if err != nil {
-		return fmt.Errorf("parse nzb: %w", err)
-	}
-
-	// Pick first file that looks like an MKV.
-	fileIdx := -1
-	for i := range doc.Files {
-		subj := strings.ToLower(doc.Files[i].Subject)
-		if strings.Contains(subj, ".mkv") {
-			fileIdx = i
-			break
-		}
-	}
-	if fileIdx < 0 {
-		return errors.New("health repair: no MKV file found in NZB")
-	}
-	file := doc.Files[fileIdx]
-
-	// Extract original filename from subject.
-	// Common forms include: "\"name.mkv\" yEnc". Fall back to a safe name.
-	mkvName := "recovered.mkv"
-	if m := regexp.MustCompile(`"([^"]+\.mkv)"`).FindStringSubmatch(file.Subject); len(m) == 2 {
-		mkvName = m[1]
-	} else if m := regexp.MustCompile(`([^\s]+\.mkv)`).FindStringSubmatch(file.Subject); len(m) == 2 {
-		mkvName = filepath.Base(m[1])
-	}
-
-	// Link/copy PAR2 set into workdir (keep-local). This is mandatory for B2.
-	parRoot := filepath.Join("/host", "inbox", "par2")
 	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
-
-	norm := func(s string) string {
-		s = strings.ToLower(s)
-		b := make([]byte, 0, len(s))
-		dash := false
-		for i := 0; i < len(s); i++ {
-			c := s[i]
-			ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
-			if ok {
-				b = append(b, c)
-				dash = false
-				continue
-			}
-			if !dash {
-				b = append(b, '-')
-				dash = true
-			}
-		}
-		out := strings.Trim(string(b), "-")
-		return out
-	}
-
-	// Allow test suffixes like ".FORCE" to still match existing PAR2 filenames.
-	stemMatch := stem
-	low := strings.ToLower(stemMatch)
-	if strings.HasSuffix(low, ".force") {
-		stemMatch = stemMatch[:len(stemMatch)-len(".force")]
-	}
-
-	want := norm(stemMatch)
-	parCount := 0
-	linkPar := func(p string, d os.DirEntry) {
-		dst := filepath.Join(workDir, d.Name())
-		_ = os.Remove(dst)
-		// Prefer hardlink/copy (not symlink): par2 auto-discovery of volume files is more reliable with regular entries.
-		if err := os.Link(p, dst); err == nil {
-			parCount++
-			return
-		}
-		if b, err := os.ReadFile(p); err == nil {
-			if err := os.WriteFile(dst, b, 0o644); err == nil {
-				parCount++
-			}
-		}
-	}
-
-	_ = filepath.WalkDir(parRoot, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		n := strings.ToLower(d.Name())
-		if !strings.HasSuffix(n, ".par2") {
-			return nil
-		}
-		base := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
-		if !strings.HasPrefix(norm(base), want) {
-			return nil
-		}
-		linkPar(p, d)
-		return nil
-	})
-
-	// Fallback: route by mirrored folder structure (nzb root -> par2 root), then take all .par2 in that folder.
-	// This helps when NZB and PAR2 stems differ but folder routing is consistent.
-	if parCount == 0 {
-		nzbRoot := filepath.Join("/host", "inbox", "nzb")
-		if relDir, err := filepath.Rel(nzbRoot, filepath.Dir(nzbPath)); err == nil {
-			candDir := filepath.Join(parRoot, relDir)
-			_ = filepath.WalkDir(candDir, func(p string, d os.DirEntry, err error) error {
-				if err != nil || d == nil || d.IsDir() {
-					return nil
-				}
-				n := strings.ToLower(d.Name())
-				if !strings.HasSuffix(n, ".par2") {
-					return nil
-				}
-				linkPar(p, d)
-				return nil
-			})
-			if parCount > 0 {
-				_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 fallback by routed folder matched dir=%s", candDir))
-			}
-		}
-	}
-
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: linked par2 file(s)=%d", parCount))
-	if parCount == 0 {
-		return errors.New("health repair: no local PAR2 found for this NZB (B2 requires keep-local par2)")
-	}
-
-	// Download segments (or zero-fill missing) into a local file so par2 can repair it.
-	// This is intentionally simple: sequential download, one NNTP client.
-	pool := nntp.NewPool(nntp.Config{Host: cfg.Download.Host, Port: cfg.Download.Port, SSL: cfg.Download.SSL, User: cfg.Download.User, Pass: cfg.Download.Pass, Timeout: 30 * time.Second}, cfg.Download.Connections)
-	cl, err := pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("health: nntp acquire: %w", err)
-	}
-	defer pool.Release(cl)
-
-	// Sort segments by number
-	segs := make([]nzb.Segment, 0, len(file.Segments))
-	segs = append(segs, file.Segments...)
-	sort.Slice(segs, func(i, j int) bool { return segs[i].Number < segs[j].Number })
-
-	outFile := filepath.Join(workDir, mkvName)
-	_ = os.Remove(outFile)
-	wf, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = wf.Close() }()
-
-	missing := 0
-	for i, s := range segs {
-		id := strings.TrimSpace(s.ID)
-		if i%200 == 0 {
-			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: downloading segments... %d/%d (missing=%d)", i, len(segs), missing))
-		}
-		lines, err := cl.BodyByMessageID(id)
-		if err != nil {
-			missing++
-			// zero-fill
-			_, _ = wf.Write(make([]byte, int(s.Bytes)))
-			continue
-		}
-		data, _, _, _, err := yenc.DecodePart(lines)
-		if err != nil {
-			missing++
-			_, _ = wf.Write(make([]byte, int(s.Bytes)))
-			continue
-		}
-		_, _ = wf.Write(data)
-	}
-	_ = wf.Sync()
-	_ = wf.Close()
-
-	if missing == 0 {
-		_ = r.jobs.AppendLog(ctx, jobID, "health: no missing segments detected; leaving NZB unchanged")
-		return nil
-	}
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: missing segments=%d (attempting PAR2 repair)", missing))
-
-	// Find the main .par2 file (prefer one that is not a volume file)
-	parMain := ""
-	entries, _ := os.ReadDir(workDir)
-	for _, e := range entries {
-		n := strings.ToLower(e.Name())
-		if strings.HasSuffix(n, ".par2") && !strings.Contains(n, ".vol") {
-			parMain = filepath.Join(workDir, e.Name())
-			break
-		}
-	}
-	if parMain == "" {
-		// fallback: any par2
-		for _, e := range entries {
-			if strings.HasSuffix(strings.ToLower(e.Name()), ".par2") {
-				parMain = filepath.Join(workDir, e.Name())
-				break
-			}
-		}
-	}
-	if parMain == "" {
-		return errors.New("health: PAR2 files were linked but main .par2 not found")
-	}
-
-	// par2 may expect embedded target paths from different generations.
-	// Mirror known target variants into workdir pointing to reconstructed outFile.
-	mapTarget := func(rel string) {
-		abs := filepath.Join(workDir, rel)
-		_ = os.MkdirAll(filepath.Dir(abs), 0o755)
-		_ = os.Remove(abs)
-		if err := os.Symlink(outFile, abs); err != nil {
-			_ = copyFilePerm(outFile, abs, 0o644)
-		}
-		_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 target mapped: %s -> %s", rel, filepath.Base(outFile)))
-	}
-	// legacy mapping
-	mapTarget(filepath.Join("host", "inbox", "media", filepath.Base(outFile)))
-	// stable mapping used by current PAR2 generation
-	mapTarget(filepath.Join("cache", "health-targets", stem+filepath.Ext(outFile)))
-
-	// par2 repair in-place
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", "/usr/bin/par2", filepath.Base(parMain), filepath.Base(outFile)))
-
-	runPar2 := func() error {
-		// Use explicit target file to avoid relying only on historical embedded paths.
-		cmd := exec.CommandContext(ctx, r.par2Binary(), "r", parMain, outFile)
-		cmd.Dir = workDir
-		stdout, _ := cmd.StdoutPipe()
-		stderr, _ := cmd.StderrPipe()
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-		scanPipe := func(prefix string, rc io.ReadCloser) {
-			defer func() { _ = rc.Close() }()
-			s := bufio.NewScanner(rc)
-			for s.Scan() {
-				_ = r.jobs.AppendLog(ctx, jobID, prefix+s.Text())
-			}
-		}
-		if stdout != nil {
-			go scanPipe("", stdout)
-		}
-		if stderr != nil {
-			go scanPipe("ERR: ", stderr)
-		}
-		return cmd.Wait()
-	}
-
-	resolvePar2Target := func() string {
-		rows, _ := r.jobs.DB().SQL.QueryContext(ctx, `SELECT line FROM job_logs WHERE job_id=? ORDER BY ts DESC LIMIT 500`, jobID)
-		if rows == nil {
-			return ""
-		}
-		defer rows.Close()
-		re := regexp.MustCompile(`Target:\s*"([^"]+)"\s*-\s*found\.`)
-		for rows.Next() {
-			var ln string
-			if e := rows.Scan(&ln); e != nil {
-				continue
-			}
-			m := re.FindStringSubmatch(ln)
-			if len(m) != 2 {
-				continue
-			}
-			cand := filepath.Clean(filepath.Join(workDir, strings.TrimPrefix(m[1], "/")))
-			if st, err := os.Stat(cand); err == nil && st.Mode().IsRegular() {
-				return cand
-			}
-		}
-		return ""
-	}
-
-	if err := runPar2(); err != nil {
-		// Retry strategy: parse the latest "Target: \"...\" - missing." hint from logs,
-		// map that path to outFile, and run par2 once more.
-		rows, _ := r.jobs.DB().SQL.QueryContext(ctx, `SELECT line FROM job_logs WHERE job_id=? ORDER BY ts DESC LIMIT 200`, jobID)
-		missingRel := ""
-		if rows != nil {
-			defer rows.Close()
-			re := regexp.MustCompile(`Target:\s*"([^"]+)"\s*-\s*missing\.`)
-			for rows.Next() {
-				var ln string
-				if e := rows.Scan(&ln); e != nil {
-					continue
-				}
-				if m := re.FindStringSubmatch(ln); len(m) == 2 {
-					cand := filepath.Clean(m[1])
-					if cand != "." && cand != "/" {
-						missingRel = strings.TrimPrefix(cand, "/")
-						break
-					}
-				}
-			}
-		}
-		if strings.TrimSpace(missingRel) != "" {
-			mapTarget(missingRel)
-			_ = r.jobs.AppendLog(ctx, jobID, "health: par2 retry after dynamic target map: "+missingRel)
-			if err2 := runPar2(); err2 == nil {
-				goto par2OK
-			} else {
-				return fmt.Errorf("health: par2 repair failed after retry: %w", err2)
-			}
-		}
-		return fmt.Errorf("health: par2 repair failed: %w", err)
-	}
-
-par2OK:
-
-	// Prefer the actual file PAR2 reports as target-found. If different from outFile,
-	// copy it over outFile so upload always uses the truly repaired bytes.
-	if found := resolvePar2Target(); strings.TrimSpace(found) != "" && found != outFile {
-		if err := copyFilePerm(found, outFile, 0o644); err == nil {
-			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: normalized repaired target from %s -> %s", found, outFile))
-		} else {
-			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: WARN normalize repaired target failed: %v", err))
-		}
-	}
-
-	// Now re-upload the repaired MKV and generate a CLEAN NZB (no PAR2 included).
 	repairedNZBTmp := filepath.Join(workDir, stem+".repaired.nzb")
 	_ = os.Remove(repairedNZBTmp)
-	if err := r.healthUploadCleanNZB(ctx, jobID, cfg, outFile, repairedNZBTmp); err != nil {
-		return err
+
+	repairCfg := filepath.Join(workDir, "nzb-repair.yaml")
+	if err := writeNZBRepairConfig(repairCfg, cfg); err != nil {
+		return fmt.Errorf("health: nzb-repair config: %w", err)
 	}
+	_ = r.jobs.AppendLog(ctx, jobID, "health: nzb-repair starting")
+	if err := runCommand(ctx, func(line string) {
+		clean := sanitizeLine(line, cfg.NgPost.Pass)
+		_ = r.jobs.AppendLog(ctx, jobID, clean)
+	}, "nzb-repair", "-c", repairCfg, "-o", repairedNZBTmp, "--tmp-dir", workDir, workNZB); err != nil {
+		return fmt.Errorf("health: nzb-repair failed: %w", err)
+	}
+	if st, err := os.Stat(repairedNZBTmp); err != nil || st.Size() == 0 {
+		return errors.New("health: nzb-repair did not produce repaired NZB")
+	}
+	_ = r.jobs.AppendLog(ctx, jobID, "health: nzb-repair output ready")
 
 	// Replace original NZB (backup original first)
 	bakRoot := strings.TrimSpace(cfg.Health.BackupDir)
@@ -443,9 +129,6 @@ par2OK:
 
 	if err := r.healthRefreshImportDB(ctx, cfg, jobID, nzbPath); err != nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: db refresh WARN: "+err.Error())
-	}
-	if err := r.healthRegeneratePAR2(ctx, cfg, jobID, nzbPath, outFile); err != nil {
-		_ = r.jobs.AppendLog(ctx, jobID, "health: par2 refresh WARN: "+err.Error())
 	}
 
 	if err := os.RemoveAll(workDir); err == nil {
@@ -502,14 +185,7 @@ func (r *Runner) healthRefreshImportDB(ctx context.Context, cfg config.Config, j
 		}
 	}
 
-	imp := importer.New(r.jobs)
-	if _, _, err := imp.ImportNZB(ctx, jobID, nzbPath); err != nil {
-		return err
-	}
-	if err := imp.EnrichLibraryResolved(ctx, cfg, jobID); err != nil {
-		return err
-	}
-	_ = r.jobs.AppendLog(ctx, jobID, "health: db reimport+resolved refreshed")
+	_ = r.jobs.AppendLog(ctx, jobID, "health: db old import removed; waiting watcher reimport")
 	return nil
 }
 
@@ -627,6 +303,41 @@ func (r *Runner) healthRegeneratePAR2(ctx context.Context, cfg config.Config, jo
 	_ = os.RemoveAll(stagingDir)
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 refreshed (removed=%d new=%d dir=%s)", removed, moved, keepDir))
 	return nil
+}
+
+func writeNZBRepairConfig(path string, cfg config.Config) error {
+	downHost := strings.TrimSpace(cfg.Download.Host)
+	downUser := strings.TrimSpace(cfg.Download.User)
+	downPass := strings.TrimSpace(cfg.Download.Pass)
+	downPort := cfg.Download.Port
+	if downPort <= 0 {
+		downPort = 563
+	}
+	downConn := cfg.Download.Connections
+	if downConn <= 0 {
+		downConn = 10
+	}
+	upHost := strings.TrimSpace(cfg.NgPost.Host)
+	upUser := strings.TrimSpace(cfg.NgPost.User)
+	upPass := strings.TrimSpace(cfg.NgPost.Pass)
+	upPort := cfg.NgPost.Port
+	if upPort <= 0 {
+		upPort = 563
+	}
+	upConn := cfg.NgPost.Connections
+	if upConn <= 0 {
+		upConn = 5
+	}
+
+	if downHost == "" || downUser == "" || downPass == "" || upHost == "" || upUser == "" || upPass == "" {
+		return errors.New("missing download/upload provider credentials for nzb-repair")
+	}
+
+	yaml := fmt.Sprintf("download_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\nupload_providers:\n  - host: %s\n    port: %d\n    username: %s\n    password: %s\n    connections: %d\n    tls: %t\n",
+		downHost, downPort, downUser, downPass, downConn, cfg.Download.SSL,
+		upHost, upPort, upUser, upPass, upConn, cfg.NgPost.SSL,
+	)
+	return os.WriteFile(path, []byte(yaml), 0o600)
 }
 
 func copyFilePerm(src, dst string, perm os.FileMode) error {
