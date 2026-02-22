@@ -1,16 +1,23 @@
 package runner
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
+	"github.com/gaby/EDRmount/internal/nntp"
+	"github.com/gaby/EDRmount/internal/nzb"
+	"github.com/gaby/EDRmount/internal/yenc"
 )
 
 type healthRepairPayload struct {
@@ -36,7 +43,6 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		_ = r.upsertHealthState(ctx, nzbPath, "repaired", now, now, "", jobID)
 	}()
 
-	// Cross-node coordination: lock file next to NZB (sidecar), so shared RAW trees don't double-repair.
 	lockPath := nzbPath + ".health.lock"
 	ttl := time.Duration(cfg.Health.Lock.LockTTLHours) * time.Hour
 	if ttl <= 0 {
@@ -51,47 +57,190 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return err
 	}
-
 	baseName := filepath.Base(nzbPath)
 	if !strings.HasSuffix(strings.ToLower(baseName), ".nzb") {
 		baseName += ".nzb"
 	}
+	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
 
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: workdir=%s", workDir))
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: nzb=%s", nzbPath))
 
-	// Copy NZB into workdir (avoid symlink surprises when we later replace it)
 	workNZB := filepath.Join(workDir, baseName)
-	_ = os.Remove(workNZB)
 	if b, err := os.ReadFile(nzbPath); err == nil {
 		_ = os.WriteFile(workNZB, b, 0o644)
 	} else {
 		return fmt.Errorf("read nzb: %w", err)
 	}
 
-	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	f, err := os.Open(workNZB)
+	if err != nil {
+		return err
+	}
+	doc, err := nzb.Parse(f)
+	_ = f.Close()
+	if err != nil {
+		return fmt.Errorf("parse nzb: %w", err)
+	}
+
+	mkvIdx := -1
+	parIdx := make([]int, 0, 16)
+	for i := range doc.Files {
+		subj := strings.ToLower(doc.Files[i].Subject)
+		if strings.Contains(subj, ".mkv") && mkvIdx < 0 {
+			mkvIdx = i
+		}
+		if strings.Contains(subj, ".par2") {
+			parIdx = append(parIdx, i)
+		}
+	}
+	if mkvIdx < 0 {
+		return errors.New("health: no mkv file found in nzb")
+	}
+	if len(parIdx) == 0 {
+		return errors.New("health: no par2 files found in nzb")
+	}
+
+	mkvName := "recovered.mkv"
+	if m := regexp.MustCompile(`"([^"]+\.mkv)"`).FindStringSubmatch(doc.Files[mkvIdx].Subject); len(m) == 2 {
+		mkvName = filepath.Base(m[1])
+	}
+	outFile := filepath.Join(workDir, mkvName)
+	wf, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+
+	_ = r.jobs.AppendLog(ctx, jobID, "health: nntp acquire start")
+	pool := nntp.NewPool(nntp.Config{Host: cfg.Download.Host, Port: cfg.Download.Port, SSL: cfg.Download.SSL, User: cfg.Download.User, Pass: cfg.Download.Pass, Timeout: 30 * time.Second}, cfg.Download.Connections)
+	cl, err := pool.Acquire(ctx)
+	if err != nil {
+		_ = wf.Close()
+		return fmt.Errorf("health: nntp acquire: %w", err)
+	}
+	defer pool.Release(cl)
+	_ = r.jobs.AppendLog(ctx, jobID, "health: nntp acquire ok")
+
+	segs := make([]nzb.Segment, 0, len(doc.Files[mkvIdx].Segments))
+	segs = append(segs, doc.Files[mkvIdx].Segments...)
+	sort.Slice(segs, func(i, j int) bool { return segs[i].Number < segs[j].Number })
+	missing := 0
+	for i, s := range segs {
+		if i%300 == 0 {
+			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: mkv download %d/%d", i, len(segs)))
+		}
+		lines, err := cl.BodyByMessageID(strings.TrimSpace(s.ID))
+		if err != nil {
+			missing++
+			_, _ = wf.Write(make([]byte, int(s.Bytes)))
+			continue
+		}
+		data, _, _, _, err := yenc.DecodePart(lines)
+		if err != nil {
+			missing++
+			_, _ = wf.Write(make([]byte, int(s.Bytes)))
+			continue
+		}
+		_, _ = wf.Write(data)
+	}
+	_ = wf.Sync()
+	_ = wf.Close()
+	if missing == 0 {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: no missing segments detected")
+		return nil
+	}
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: missing segments=%d", missing))
+
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: downloading par2 files count=%d", len(parIdx)))
+	for _, idx := range parIdx {
+		pf := doc.Files[idx]
+		parName := fmt.Sprintf("par_%d.par2", idx)
+		if m := regexp.MustCompile(`"([^"]+\.par2)"`).FindStringSubmatch(pf.Subject); len(m) == 2 {
+			parName = filepath.Base(m[1])
+		}
+		parPath := filepath.Join(workDir, parName)
+		of, err := os.OpenFile(parPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err != nil {
+			return err
+		}
+		psegs := make([]nzb.Segment, 0, len(pf.Segments))
+		psegs = append(psegs, pf.Segments...)
+		sort.Slice(psegs, func(i, j int) bool { return psegs[i].Number < psegs[j].Number })
+		for i, s := range psegs {
+			if i%300 == 0 {
+				_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 %s %d/%d", parName, i, len(psegs)))
+			}
+			lines, err := cl.BodyByMessageID(strings.TrimSpace(s.ID))
+			if err != nil {
+				_ = of.Close()
+				return fmt.Errorf("health: par2 segment download failed: %w", err)
+			}
+			data, _, _, _, err := yenc.DecodePart(lines)
+			if err != nil {
+				_ = of.Close()
+				return fmt.Errorf("health: par2 decode failed: %w", err)
+			}
+			_, _ = of.Write(data)
+		}
+		_ = of.Sync()
+		_ = of.Close()
+	}
+
+	parMain := ""
+	entries, _ := os.ReadDir(workDir)
+	for _, e := range entries {
+		n := strings.ToLower(e.Name())
+		if strings.HasSuffix(n, ".par2") && !strings.Contains(n, ".vol") {
+			parMain = filepath.Join(workDir, e.Name())
+			break
+		}
+	}
+	if parMain == "" {
+		for _, e := range entries {
+			if strings.HasSuffix(strings.ToLower(e.Name()), ".par2") {
+				parMain = filepath.Join(workDir, e.Name())
+				break
+			}
+		}
+	}
+	if parMain == "" {
+		return errors.New("health: no usable par2 file in workdir")
+	}
+
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", r.par2Binary(), filepath.Base(parMain), filepath.Base(outFile)))
+	cmd := exec.CommandContext(ctx, r.par2Binary(), "r", parMain, outFile)
+	cmd.Dir = workDir
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	scanPipe := func(prefix string, rc io.ReadCloser) {
+		defer func() { _ = rc.Close() }()
+		s := bufio.NewScanner(rc)
+		for s.Scan() {
+			_ = r.jobs.AppendLog(ctx, jobID, prefix+s.Text())
+		}
+	}
+	if stdout != nil {
+		go scanPipe("", stdout)
+	}
+	if stderr != nil {
+		go scanPipe("ERR: ", stderr)
+	}
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("health: par2 repair failed: %w", err)
+	}
+
 	repairedNZBTmp := filepath.Join(workDir, stem+".repaired.nzb")
 	_ = os.Remove(repairedNZBTmp)
+	if err := r.healthUploadCleanNZB(ctx, jobID, cfg, outFile, repairedNZBTmp); err != nil {
+		return err
+	}
+	if err := nzb.NormalizeCanonical(repairedNZBTmp); err != nil {
+		return fmt.Errorf("health: canonical normalize repaired nzb: %w", err)
+	}
 
-	repairCfg := filepath.Join(workDir, "nzb-repair.yaml")
-	if err := writeNZBRepairConfig(repairCfg, cfg); err != nil {
-		return fmt.Errorf("health: nzb-repair config: %w", err)
-	}
-	repairTmpDir := filepath.Join(workDir, "tmp")
-	_ = os.MkdirAll(repairTmpDir, 0o755)
-	_ = r.jobs.AppendLog(ctx, jobID, "health: nzb-repair starting")
-	if err := runCommand(ctx, func(line string) {
-		clean := sanitizeLine(line, cfg.NgPost.Pass)
-		_ = r.jobs.AppendLog(ctx, jobID, clean)
-	}, "nzb-repair", "-c", repairCfg, "-o", repairedNZBTmp, "--tmp-dir", repairTmpDir, workNZB); err != nil {
-		return fmt.Errorf("health: nzb-repair failed: %w", err)
-	}
-	if st, err := os.Stat(repairedNZBTmp); err != nil || st.Size() == 0 {
-		return errors.New("health: nzb-repair did not produce repaired NZB")
-	}
-	_ = r.jobs.AppendLog(ctx, jobID, "health: nzb-repair output ready")
-
-	// Replace original NZB (backup original first)
 	bakRoot := strings.TrimSpace(cfg.Health.BackupDir)
 	if bakRoot == "" {
 		bakRoot = "/cache/health-bak"
@@ -108,12 +257,10 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if err := os.MkdirAll(filepath.Dir(bakPath), 0o755); err != nil {
 		return err
 	}
-
 	destTmp := nzbPath + ".health.tmp"
 	if err := copyFilePerm(repairedNZBTmp, destTmp, 0o644); err != nil {
 		return fmt.Errorf("copy repaired nzb: %w", err)
 	}
-
 	_ = os.Remove(bakPath)
 	if err := copyFilePerm(nzbPath, bakPath, 0o644); err != nil {
 		_ = os.Remove(destTmp)
@@ -128,11 +275,9 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		_ = os.Remove(destTmp)
 		return fmt.Errorf("replace nzb: %w", rerr)
 	}
-
 	if err := r.healthRefreshImportDB(ctx, cfg, jobID, nzbPath); err != nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: db refresh WARN: "+err.Error())
 	}
-
 	if err := os.RemoveAll(workDir); err == nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: cleaned workdir")
 	}
