@@ -61,7 +61,6 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if !strings.HasSuffix(strings.ToLower(baseName), ".nzb") {
 		baseName += ".nzb"
 	}
-	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
 
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: workdir=%s", workDir))
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: nzb=%s", nzbPath))
@@ -232,56 +231,33 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		return fmt.Errorf("health: par2 repair failed: %w", err)
 	}
 
-	repairedNZBTmp := filepath.Join(workDir, stem+".repaired.nzb")
-	_ = os.Remove(repairedNZBTmp)
-	if err := r.healthUploadCleanNZB(ctx, jobID, cfg, outFile, repairedNZBTmp); err != nil {
-		return err
+	mediaOutDir := strings.TrimSpace(cfg.Watch.Media.Dir)
+	if mediaOutDir == "" {
+		mediaOutDir = "/host/inbox/media"
 	}
-	if err := nzb.NormalizeCanonical(repairedNZBTmp); err != nil {
-		return fmt.Errorf("health: canonical normalize repaired nzb: %w", err)
+	if err := os.MkdirAll(mediaOutDir, 0o755); err != nil {
+		return fmt.Errorf("health: ensure media out dir: %w", err)
 	}
+	repairedOut := filepath.Join(mediaOutDir, filepath.Base(outFile))
+	tmpOut := repairedOut + ".health.tmp"
+	_ = os.Remove(tmpOut)
+	if err := copyFilePerm(outFile, tmpOut, 0o644); err != nil {
+		return fmt.Errorf("health: copy repaired mkv to tmp: %w", err)
+	}
+	if err := os.Rename(tmpOut, repairedOut); err != nil {
+		_ = os.Remove(tmpOut)
+		return fmt.Errorf("health: move repaired mkv to inbox media: %w", err)
+	}
+	_ = os.Chtimes(repairedOut, time.Now(), time.Now())
+	_ = r.jobs.AppendLog(ctx, jobID, "health: repaired mkv moved to "+repairedOut)
 
-	bakRoot := strings.TrimSpace(cfg.Health.BackupDir)
-	if bakRoot == "" {
-		bakRoot = "/cache/health-bak"
-	}
-	outRoot := strings.TrimSpace(cfg.NgPost.OutputDir)
-	if outRoot == "" {
-		outRoot = "/host/inbox/nzb"
-	}
-	rel, _ := filepath.Rel(outRoot, nzbPath)
-	if strings.HasPrefix(rel, "..") {
-		rel = filepath.Base(nzbPath)
-	}
-	bakPath := filepath.Join(bakRoot, rel)
-	if err := os.MkdirAll(filepath.Dir(bakPath), 0o755); err != nil {
-		return err
-	}
-	destTmp := nzbPath + ".health.tmp"
-	if err := copyFilePerm(repairedNZBTmp, destTmp, 0o644); err != nil {
-		return fmt.Errorf("copy repaired nzb: %w", err)
-	}
-	_ = os.Remove(bakPath)
-	if err := copyFilePerm(nzbPath, bakPath, 0o644); err != nil {
-		_ = os.Remove(destTmp)
-		return fmt.Errorf("backup original: %w", err)
-	}
-	if err := os.Remove(nzbPath); err != nil {
-		_ = os.Remove(destTmp)
-		return fmt.Errorf("remove original after backup: %w", err)
-	}
-	if rerr := os.Rename(destTmp, nzbPath); rerr != nil {
-		_ = copyFilePerm(bakPath, nzbPath, 0o644)
-		_ = os.Remove(destTmp)
-		return fmt.Errorf("replace nzb: %w", rerr)
-	}
 	if err := r.healthRefreshImportDB(ctx, cfg, jobID, nzbPath); err != nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: db refresh WARN: "+err.Error())
 	}
 	if err := os.RemoveAll(workDir); err == nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: cleaned workdir")
 	}
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: repaired OK (backup=%s)", bakPath))
+	_ = r.jobs.AppendLog(ctx, jobID, "health: repaired OK")
 	return nil
 }
 
