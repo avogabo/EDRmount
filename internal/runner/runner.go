@@ -547,6 +547,18 @@ func (r *Runner) par2Binary() string {
 	return "par2"
 }
 
+// par2RepairBinary prefers distro/classic par2 for repair tests.
+// If unavailable, it falls back to the configured/default par2 binary.
+func (r *Runner) par2RepairBinary() string {
+	if st, err := os.Stat("/usr/bin/par2"); err == nil && !st.IsDir() {
+		return "/usr/bin/par2"
+	}
+	if p, err := exec.LookPath("/usr/bin/par2"); err == nil && strings.TrimSpace(p) != "" {
+		return p
+	}
+	return r.par2Binary()
+}
+
 func collectUploadFiles(inputPath string) ([]string, error) {
 	st, err := os.Stat(inputPath)
 	if err != nil {

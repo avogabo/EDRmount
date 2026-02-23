@@ -206,7 +206,8 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		return errors.New("health: no usable par2 file in workdir")
 	}
 
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", r.par2Binary(), filepath.Base(parMain), filepath.Base(outFile)))
+	repairBin := r.par2RepairBinary()
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", repairBin, filepath.Base(parMain), filepath.Base(outFile)))
 
 	mapTarget := func(rel string) {
 		abs := filepath.Join(workDir, strings.TrimPrefix(rel, "/"))
@@ -244,7 +245,7 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 		return ""
 	}
 	runPar2 := func() error {
-		cmd := exec.CommandContext(ctx, r.par2Binary(), "r", parMain, outFile)
+		cmd := exec.CommandContext(ctx, repairBin, "r", parMain, outFile)
 		cmd.Dir = workDir
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
