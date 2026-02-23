@@ -207,28 +207,101 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	}
 
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 repair: %s r %s %s", r.par2Binary(), filepath.Base(parMain), filepath.Base(outFile)))
-	cmd := exec.CommandContext(ctx, r.par2Binary(), "r", parMain, outFile)
-	cmd.Dir = workDir
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	if err := cmd.Start(); err != nil {
-		return err
+
+	mapTarget := func(rel string) {
+		abs := filepath.Join(workDir, strings.TrimPrefix(rel, "/"))
+		_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+		_ = os.Remove(abs)
+		if err := os.Symlink(outFile, abs); err != nil {
+			_ = copyFilePerm(outFile, abs, 0o644)
+		}
+		_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 target mapped: %s -> %s", rel, filepath.Base(outFile)))
 	}
-	scanPipe := func(prefix string, rc io.ReadCloser) {
-		defer func() { _ = rc.Close() }()
-		s := bufio.NewScanner(rc)
-		for s.Scan() {
-			_ = r.jobs.AppendLog(ctx, jobID, prefix+s.Text())
+	resolvePar2Target := func() string {
+		if r.jobs == nil || r.jobs.DB() == nil || r.jobs.DB().SQL == nil {
+			return ""
+		}
+		rows, _ := r.jobs.DB().SQL.QueryContext(ctx, `SELECT line FROM job_logs WHERE job_id=? ORDER BY ts DESC LIMIT 500`, jobID)
+		if rows == nil {
+			return ""
+		}
+		defer rows.Close()
+		re := regexp.MustCompile(`Target:\s*"([^"]+)"\s*-\s*found\.`)
+		for rows.Next() {
+			var ln string
+			if e := rows.Scan(&ln); e != nil {
+				continue
+			}
+			m := re.FindStringSubmatch(ln)
+			if len(m) != 2 {
+				continue
+			}
+			cand := filepath.Clean(filepath.Join(workDir, strings.TrimPrefix(m[1], "/")))
+			if st, err := os.Stat(cand); err == nil && st.Mode().IsRegular() {
+				return cand
+			}
+		}
+		return ""
+	}
+	runPar2 := func() error {
+		cmd := exec.CommandContext(ctx, r.par2Binary(), "r", parMain, outFile)
+		cmd.Dir = workDir
+		stdout, _ := cmd.StdoutPipe()
+		stderr, _ := cmd.StderrPipe()
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		scanPipe := func(prefix string, rc io.ReadCloser) {
+			defer func() { _ = rc.Close() }()
+			s := bufio.NewScanner(rc)
+			for s.Scan() {
+				_ = r.jobs.AppendLog(ctx, jobID, prefix+s.Text())
+			}
+		}
+		if stdout != nil {
+			go scanPipe("", stdout)
+		}
+		if stderr != nil {
+			go scanPipe("ERR: ", stderr)
+		}
+		return cmd.Wait()
+	}
+
+	mapTarget(filepath.Join("host", "inbox", "media", filepath.Base(outFile)))
+	if err := runPar2(); err != nil {
+		missingRel := ""
+		if r.jobs != nil && r.jobs.DB() != nil && r.jobs.DB().SQL != nil {
+			rows, _ := r.jobs.DB().SQL.QueryContext(ctx, `SELECT line FROM job_logs WHERE job_id=? ORDER BY ts DESC LIMIT 200`, jobID)
+			if rows != nil {
+				defer rows.Close()
+				re := regexp.MustCompile(`Target:\s*"([^"]+)"\s*-\s*missing\.`)
+				for rows.Next() {
+					var ln string
+					if e := rows.Scan(&ln); e != nil {
+						continue
+					}
+					if m := re.FindStringSubmatch(ln); len(m) == 2 {
+						missingRel = strings.TrimPrefix(filepath.Clean(m[1]), "/")
+						break
+					}
+				}
+			}
+		}
+		if strings.TrimSpace(missingRel) != "" {
+			mapTarget(missingRel)
+			_ = r.jobs.AppendLog(ctx, jobID, "health: par2 retry after dynamic target map: "+missingRel)
+			if err2 := runPar2(); err2 != nil {
+				return fmt.Errorf("health: par2 repair failed after retry: %w", err2)
+			}
+		} else {
+			return fmt.Errorf("health: par2 repair failed: %w", err)
 		}
 	}
-	if stdout != nil {
-		go scanPipe("", stdout)
-	}
-	if stderr != nil {
-		go scanPipe("ERR: ", stderr)
-	}
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("health: par2 repair failed: %w", err)
+
+	if found := resolvePar2Target(); strings.TrimSpace(found) != "" && found != outFile {
+		if err := copyFilePerm(found, outFile, 0o644); err == nil {
+			_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: normalized repaired target from %s -> %s", found, outFile))
+		}
 	}
 
 	mediaOutDir := strings.TrimSpace(cfg.Watch.Media.Dir)
