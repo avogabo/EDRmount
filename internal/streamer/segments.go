@@ -145,22 +145,10 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	// then stream using real decoded segment sizes from cache/files.
 	writtenAny := false
 
-	startIdx := sort.Search(len(layout.Segs), func(i int) bool {
-		return layout.Offsets[i]+layout.Segs[i].Bytes > start
-	})
-	if startIdx < 0 {
-		startIdx = 0
-	}
-	// Small backtrack window to absorb encoded-vs-decoded drift.
-	if startIdx > 2 {
-		startIdx -= 2
-	} else {
-		startIdx = 0
-	}
+	// Robust mode: walk decoded offsets from segment 0.
+	// Using encoded offset hints can drift on some posts and break tail ranges.
+	startIdx := 0
 	off := int64(0)
-	if startIdx < len(layout.Offsets) {
-		off = layout.Offsets[startIdx]
-	}
 
 	for i := startIdx; i < len(layout.Segs); i++ {
 		seg := layout.Segs[i]
