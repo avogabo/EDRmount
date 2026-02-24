@@ -141,83 +141,110 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	}
 
 	// IMPORTANT: NZB segment bytes are often ENCODED sizes and may not match decoded payload sizes.
-	// We use encoded offsets only as a fast index hint (start near requested range),
-	// then stream using real decoded segment sizes from cache/files.
-	writtenAny := false
-
-	// Robust mode: walk decoded offsets from segment 0.
-	// Using encoded offset hints can drift on some posts and break tail ranges.
-	startIdx := 0
-	off := int64(0)
-
-	for i := startIdx; i < len(layout.Segs); i++ {
-		seg := layout.Segs[i]
-
-		// Prefetch best-effort: do not block on errors/results.
-		if prefetch > 0 && i+1 < len(layout.Segs) {
-			for j := 1; j <= prefetch && i+j < len(layout.Segs); j++ {
-				nextSeg := layout.Segs[i+j]
-				go func(ns SegmentLocator) {
-					ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-					defer cancel()
-					_, _ = s.ensureSegment(ctx2, ns)
-				}(nextSeg)
-			}
-		}
-
-		p, err := s.ensureSegment(ctx, seg)
-		if err != nil {
-			return err
-		}
-		st, err := os.Stat(p)
-		if err != nil {
-			return err
-		}
-		segSize := st.Size()
-		if segSize <= 0 {
-			continue
-		}
-		segStart := off
-		segEnd := off + segSize - 1
-		off += segSize
-
-		if start > segEnd {
-			continue
-		}
-		if end < segStart {
-			break
-		}
-
-		f, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		sliceStart := start
-		if sliceStart < segStart {
-			sliceStart = segStart
-		}
-		sliceEnd := end
-		if sliceEnd > segEnd {
-			sliceEnd = segEnd
-		}
-		if _, err := f.Seek(sliceStart-segStart, 0); err != nil {
-			_ = f.Close()
-			return err
-		}
-		if _, err := io.CopyN(w, f, (sliceEnd-sliceStart)+1); err != nil {
-			_ = f.Close()
-			return err
-		}
-		_ = f.Close()
-		writtenAny = true
-		if sliceEnd == end {
-			break
-		}
+	// Strategy:
+	// 1) Use encoded offsets as a fast hint to jump near the requested range.
+	// 2) If no bytes are produced (drift edge-case), retry from segment 0.
+	startIdx := sort.Search(len(layout.Segs), func(i int) bool {
+		return layout.Offsets[i]+layout.Segs[i].Bytes > start
+	})
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if startIdx > 8 {
+		startIdx -= 8 // small backtrack to absorb encoded-vs-decoded drift
+	} else {
+		startIdx = 0
 	}
 
-	if !writtenAny {
-		// Requested range starts beyond currently addressable decoded data.
-		// For FUSE readers this should behave like EOF (empty read), not I/O error.
+	streamFrom := func(fromIdx int, fromOff int64, localPrefetch int) (bool, error) {
+		writtenAny := false
+		off := fromOff
+		for i := fromIdx; i < len(layout.Segs); i++ {
+			seg := layout.Segs[i]
+
+			// Prefetch best-effort: do not block on errors/results.
+			if localPrefetch > 0 && i+1 < len(layout.Segs) {
+				for j := 1; j <= localPrefetch && i+j < len(layout.Segs); j++ {
+					nextSeg := layout.Segs[i+j]
+					go func(ns SegmentLocator) {
+						ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+						defer cancel()
+						_, _ = s.ensureSegment(ctx2, ns)
+					}(nextSeg)
+				}
+			}
+
+			p, err := s.ensureSegment(ctx, seg)
+			if err != nil {
+				return false, err
+			}
+			st, err := os.Stat(p)
+			if err != nil {
+				return false, err
+			}
+			segSize := st.Size()
+			if segSize <= 0 {
+				continue
+			}
+			segStart := off
+			segEnd := off + segSize - 1
+			off += segSize
+
+			if start > segEnd {
+				continue
+			}
+			if end < segStart {
+				break
+			}
+
+			f, err := os.Open(p)
+			if err != nil {
+				return false, err
+			}
+			sliceStart := start
+			if sliceStart < segStart {
+				sliceStart = segStart
+			}
+			sliceEnd := end
+			if sliceEnd > segEnd {
+				sliceEnd = segEnd
+			}
+			if _, err := f.Seek(sliceStart-segStart, 0); err != nil {
+				_ = f.Close()
+				return false, err
+			}
+			if _, err := io.CopyN(w, f, (sliceEnd-sliceStart)+1); err != nil {
+				_ = f.Close()
+				return false, err
+			}
+			_ = f.Close()
+			writtenAny = true
+			if sliceEnd == end {
+				break
+			}
+		}
+		return writtenAny, nil
+	}
+
+	// First pass: fast near target with configured prefetch.
+	initialOff := int64(0)
+	if startIdx > 0 && startIdx < len(layout.Offsets) {
+		initialOff = layout.Offsets[startIdx]
+	}
+	written, err := streamFrom(startIdx, initialOff, prefetch)
+	if err != nil {
+		return err
+	}
+	if written {
+		return nil
+	}
+
+	// Fallback: full scan from start with no prefetch to avoid storms.
+	written, err = streamFrom(0, 0, 0)
+	if err != nil {
+		return err
+	}
+	if !written {
 		return nil
 	}
 	return nil
