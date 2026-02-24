@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gaby/EDRmount/internal/config"
@@ -24,6 +25,32 @@ type Streamer struct {
 	pool     *nntp.Pool
 	maxCache int64
 	segLocks sync.Map // cachePath -> *sync.Mutex
+	metrics  metricsCounters
+}
+
+type MetricsSnapshot struct {
+	RequestsTotal      int64   `json:"requests_total"`
+	RequestsErrors     int64   `json:"requests_errors"`
+	RangesServed       int64   `json:"ranges_served"`
+	BytesServed        int64   `json:"bytes_served"`
+	SegmentsFetched    int64   `json:"segments_fetched"`
+	SegmentCacheHits   int64   `json:"segment_cache_hits"`
+	SegmentFetchErrors int64   `json:"segment_fetch_errors"`
+	BytesDecoded       int64   `json:"bytes_decoded"`
+	AvgRangeLatencyMs  float64 `json:"avg_range_latency_ms"`
+}
+
+type metricsCounters struct {
+	requestsTotal      atomic.Int64
+	requestsErrors     atomic.Int64
+	rangesServed       atomic.Int64
+	bytesServed        atomic.Int64
+	segmentsFetched    atomic.Int64
+	segmentCacheHits   atomic.Int64
+	segmentFetchErrors atomic.Int64
+	bytesDecoded       atomic.Int64
+	totalLatencyNs     atomic.Int64
+	latencySamples     atomic.Int64
 }
 
 func New(cfg config.DownloadProvider, j *jobs.Store, cacheDir string, maxCacheBytes int64) *Streamer {
@@ -131,4 +158,36 @@ func (s *Streamer) EnsureFile(ctx context.Context, importID string, fileIdx int,
 		return "", err
 	}
 	return outPath, nil
+}
+
+func (s *Streamer) SnapshotMetrics() MetricsSnapshot {
+	samples := s.metrics.latencySamples.Load()
+	avg := 0.0
+	if samples > 0 {
+		avg = float64(s.metrics.totalLatencyNs.Load()) / float64(samples) / 1e6
+	}
+	return MetricsSnapshot{
+		RequestsTotal:      s.metrics.requestsTotal.Load(),
+		RequestsErrors:     s.metrics.requestsErrors.Load(),
+		RangesServed:       s.metrics.rangesServed.Load(),
+		BytesServed:        s.metrics.bytesServed.Load(),
+		SegmentsFetched:    s.metrics.segmentsFetched.Load(),
+		SegmentCacheHits:   s.metrics.segmentCacheHits.Load(),
+		SegmentFetchErrors: s.metrics.segmentFetchErrors.Load(),
+		BytesDecoded:       s.metrics.bytesDecoded.Load(),
+		AvgRangeLatencyMs:  avg,
+	}
+}
+
+func (s *Streamer) recordRange(duration time.Duration, bytes int64, err error) {
+	s.metrics.requestsTotal.Add(1)
+	s.metrics.rangesServed.Add(1)
+	s.metrics.totalLatencyNs.Add(duration.Nanoseconds())
+	s.metrics.latencySamples.Add(1)
+	if bytes > 0 {
+		s.metrics.bytesServed.Add(bytes)
+	}
+	if err != nil {
+		s.metrics.requestsErrors.Add(1)
+	}
 }

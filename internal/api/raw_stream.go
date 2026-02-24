@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gaby/EDRmount/internal/streamer"
 	"github.com/gaby/EDRmount/internal/subject"
 )
 
@@ -34,8 +33,7 @@ func (s *Server) handleRawFileStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	cfg := s.Config()
-	st := streamer.New(cfg.Download, s.jobs, cfg.Paths.CacheDir, cfg.Paths.CacheMaxBytes)
+	st := s.sharedStreamer()
 
 	// Find matching file_idx by subject-derived filename and also get total bytes.
 	rows, err := s.jobs.DB().SQL.QueryContext(ctx, `SELECT idx,filename,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, importID)
@@ -244,8 +242,7 @@ func (s *Server) handlePlayStream(w http.ResponseWriter, r *http.Request) {
 	log.Printf("PLAY start import=%s fileIdx=%d method=%s range=%q ua=%q remote=%s", importID, fileIdx, r.Method, r.Header.Get("Range"), r.UserAgent(), r.RemoteAddr)
 	defer log.Printf("PLAY end import=%s fileIdx=%d method=%s", importID, fileIdx, r.Method)
 
-	cfg := s.Config()
-	st := streamer.New(cfg.Download, s.jobs, cfg.Paths.CacheDir, cfg.Paths.CacheMaxBytes)
+	st := s.sharedStreamer()
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Accept-Ranges", "bytes")

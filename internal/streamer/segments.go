@@ -59,6 +59,7 @@ func (s *Streamer) segCachePath(importID string, fileIdx int, segNum int, messag
 func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (string, error) {
 	p := s.segCachePath(seg.ImportID, seg.FileIdx, seg.Number, seg.MessageID)
 	if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+		s.metrics.segmentCacheHits.Add(1)
 		return p, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -73,6 +74,7 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 
 	// Re-check after lock (another goroutine may have completed it).
 	if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+		s.metrics.segmentCacheHits.Add(1)
 		return p, nil
 	}
 
@@ -88,13 +90,17 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 	log.Printf("rawseg: import=%s fileIdx=%d seg=%d fetching", seg.ImportID, seg.FileIdx, seg.Number)
 	lines, err := cl.BodyByMessageID(seg.MessageID)
 	if err != nil {
+		s.metrics.segmentFetchErrors.Add(1)
 		return "", err
 	}
 	data, _, _, _, err := yenc.DecodePart(lines)
 	if err != nil {
+		s.metrics.segmentFetchErrors.Add(1)
 		return "", err
 	}
 	log.Printf("rawseg: import=%s fileIdx=%d seg=%d decoded=%d bytes", seg.ImportID, seg.FileIdx, seg.Number, len(data))
+	s.metrics.segmentsFetched.Add(1)
+	s.metrics.bytesDecoded.Add(int64(len(data)))
 
 	tmp := p + ".part"
 	_ = os.Remove(tmp)
@@ -112,11 +118,14 @@ func (s *Streamer) ensureSegment(ctx context.Context, seg SegmentLocator) (strin
 // StreamRange writes exactly [start,end] inclusive from the logical file.
 // El parámetro prefetch indica cuántos segmentos adicionales descargar anticipadamente.
 func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int, filename string, start, end int64, w io.Writer, prefetch int) error {
+	started := time.Now()
+	var served int64
 	// Load segments from DB
 	qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
 	defer qcancel()
 	rows, err := s.jobs.DB().SQL.QueryContext(qctx, `SELECT number,bytes,message_id FROM nzb_segments WHERE import_id=? AND file_idx=? ORDER BY number ASC`, importID, fileIdx)
 	if err != nil {
+		s.recordRange(time.Since(started), served, err)
 		return err
 	}
 	defer rows.Close()
@@ -216,11 +225,13 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 			_ = f.Close()
 			return err
 		}
-		if _, err := io.CopyN(w, f, (sliceEnd-sliceStart)+1); err != nil {
+		n := (sliceEnd - sliceStart) + 1
+		if _, err := io.CopyN(w, f, n); err != nil {
 			_ = f.Close()
 			return err
 		}
 		_ = f.Close()
+		served += n
 		writtenAny = true
 		if sliceEnd == end {
 			break
@@ -230,7 +241,9 @@ func (s *Streamer) StreamRange(ctx context.Context, importID string, fileIdx int
 	if !writtenAny {
 		// Requested range starts beyond currently addressable decoded data.
 		// For FUSE readers this should behave like EOF (empty read), not I/O error.
+		s.recordRange(time.Since(started), served, nil)
 		return nil
 	}
+	s.recordRange(time.Since(started), served, nil)
 	return nil
 }

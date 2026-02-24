@@ -15,6 +15,7 @@ import (
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/db"
 	"github.com/gaby/EDRmount/internal/jobs"
+	"github.com/gaby/EDRmount/internal/streamer"
 	"github.com/gaby/EDRmount/internal/version"
 )
 
@@ -27,6 +28,9 @@ type Server struct {
 	cfgPath string
 	mux     *http.ServeMux
 	jobs    *jobs.Store
+
+	streamMu sync.Mutex
+	stream   *streamer.Streamer
 }
 
 func (s *Server) Config() config.Config {
@@ -39,6 +43,20 @@ func (s *Server) setConfig(next config.Config) {
 	s.cfgMu.Lock()
 	s.cfg = next
 	s.cfgMu.Unlock()
+	s.streamMu.Lock()
+	s.stream = nil
+	s.streamMu.Unlock()
+}
+
+func (s *Server) sharedStreamer() *streamer.Streamer {
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	if s.stream != nil {
+		return s.stream
+	}
+	cfg := s.Config()
+	s.stream = streamer.New(cfg.Download, s.jobs, cfg.Paths.CacheDir, cfg.Paths.CacheMaxBytes)
+	return s.stream
 }
 
 type Options struct {
