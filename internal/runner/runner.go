@@ -337,10 +337,6 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			}
 
 			mediaFiles := append([]string{}, sourceFiles...)
-			parFiles := []string{}
-			if parEnabled && parDir != "" {
-				parFiles, _ = filepath.Glob(filepath.Join(parDir, "*.par2"))
-			}
 			if len(mediaFiles) == 0 {
 				msg := "nyuu upload has no media files"
 				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
@@ -388,37 +384,6 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			}
 			_ = r.jobs.AppendLog(ctx, j.ID, "nyuu: classic NZB normalization OK")
 
-			if len(parFiles) > 0 {
-				stagingParNZB := filepath.Join(stagingDir, fmt.Sprintf("%s-%s.par2.nzb", base, j.ID))
-				emitPhase("Subiendo PAR2 por separado (Uploading PAR2 separately)")
-				emitProgress(90)
-				if err := runNyuu(stagingParNZB, parFiles, "par2"); err != nil {
-					msg := "par2 upload failed: " + err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				if err := nzb.NormalizeCanonical(stagingParNZB); err != nil {
-					msg := "par2 nzb normalize failed: " + err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				parRoot := strings.TrimSpace(cfg.Upload.Par.Dir)
-				if parRoot == "" {
-					parRoot = "/host/inbox/par2"
-				}
-				relDir, _ := filepath.Rel(outDir, filepath.Dir(finalNZB))
-				parNZBName := strings.TrimSuffix(filepath.Base(finalNZB), filepath.Ext(finalNZB)) + ".par2.nzb"
-				parNZBFinal := filepath.Join(parRoot, relDir, parNZBName)
-				if _, err := moveNZBStagingToFinal(stagingParNZB, parNZBFinal); err != nil {
-					msg := "move par2 nzb: " + err.Error()
-					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-					_ = r.jobs.SetFailed(ctx, j.ID, msg)
-					return
-				}
-				_ = r.jobs.AppendLog(ctx, j.ID, "par2 nzb moved to "+parNZBFinal)
-			}
 
 			emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
 			emitProgress(99)
