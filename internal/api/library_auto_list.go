@@ -138,12 +138,15 @@ func (s *Server) registerLibraryAutoListRoutes() {
 				// It's a file directly under this dir; resolve exact size by virtual_path -> file_idx.
 				var idx int
 				var bytes int64
-				_ = s.jobs.DB().SQL.QueryRowContext(
+				hasIdx := false
+				if err := s.jobs.DB().SQL.QueryRowContext(
 					r.Context(),
 					`SELECT file_idx FROM library_resolved WHERE import_id=? AND virtual_path=? LIMIT 1`,
 					importID, vr,
-				).Scan(&idx)
-				if idx > 0 {
+				).Scan(&idx); err == nil {
+					hasIdx = true
+				}
+				if hasIdx {
 					_ = s.jobs.DB().SQL.QueryRowContext(
 						r.Context(),
 						`SELECT total_bytes FROM nzb_files WHERE import_id=? AND idx=? LIMIT 1`,
