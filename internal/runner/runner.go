@@ -361,17 +361,11 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				if ng.Groups != "" {
 					args = append(args, "-g", ng.Groups)
 				}
-				// Keep nyuu segmentation close to stable ngpost behavior for streaming.
-				// 680K + yEnc overhead lands near the classic ~716800 post bytes.
-				args = append(args,
-					"--article-size", "680K",
-					"--article-line-size", "128",
-				)
-				// Obfuscation (metadata only): keep filename/yenc-name stable for import/mount.
+				// Obfuscation (safe for pipeline): randomize article metadata only.
+				// Keep filename/yenc-name stable so downstream import/mount keeps working.
 				args = append(args,
 					"--subject", "${rand(40)} yEnc ({part}/{parts})",
 					"--nzb-subject", `"{filename}" yEnc ({part}/{parts})`,
-					"--yenc-name", "{filename}",
 					"--message-id", "${rand(24)}-${rand(12)}@nyuu",
 					"--from", "poster <poster@example.com>",
 				)
