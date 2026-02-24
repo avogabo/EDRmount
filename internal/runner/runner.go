@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -359,9 +360,11 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				return runCommand(ctx, func(line string) {
 					clean := sanitizeLine(line, ng.Pass)
 					_ = r.jobs.AppendLog(ctx, j.ID, clean)
-					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-							emitProgress(n)
+					if label == "media" {
+						if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+							if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+								emitProgress(n)
+							}
 						}
 					}
 				}, r.NyuuPath, args...)
@@ -384,6 +387,31 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			}
 			_ = r.jobs.AppendLog(ctx, j.ID, "nyuu: classic NZB normalization OK")
 
+			// Upload PAR2 set as its own NZB and keep only that NZB (no raw .par2 files in inbox/par2).
+			if parEnabled && parKeep && strings.TrimSpace(parDir) != "" {
+				parFiles := make([]string, 0, 16)
+				if entries, e := os.ReadDir(parDir); e == nil {
+					for _, pe := range entries {
+						if pe.IsDir() || !strings.HasSuffix(strings.ToLower(pe.Name()), ".par2") {
+							continue
+						}
+						parFiles = append(parFiles, filepath.Join(parDir, pe.Name()))
+					}
+				}
+				if len(parFiles) > 0 {
+					sort.Strings(parFiles)
+					parStagingNZB := filepath.Join(cacheDir, base+".par2.nzb")
+					emitPhase("Subiendo PAR2 NZB (Uploading PAR2 NZB)")
+					if e := runNyuu(parStagingNZB, parFiles, "par2"); e != nil {
+						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: PAR2 NZB upload failed: "+e.Error())
+					} else {
+						if e := nzb.NormalizeCanonical(parStagingNZB); e != nil {
+							_ = r.jobs.AppendLog(ctx, j.ID, "WARN: PAR2 NZB normalize failed: "+e.Error())
+						}
+						r.persistParNZB(ctx, j.ID, cfg, outDir, finalNZB, parStagingNZB)
+					}
+				}
+			}
 
 			emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
 			emitProgress(99)
@@ -395,7 +423,6 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				return
 			}
 			emitProgress(100)
-			r.persistParFiles(ctx, j.ID, cfg, parKeep, parDir, outDir, finalNZB)
 			_ = r.jobs.SetDone(ctx, j.ID)
 			return
 		}
@@ -484,8 +511,8 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-func (r *Runner) persistParFiles(ctx context.Context, jobID string, cfg config.Config, parKeep bool, parDir, outDir, finalNZB string) {
-	if !parKeep || strings.TrimSpace(parDir) == "" {
+func (r *Runner) persistParNZB(ctx context.Context, jobID string, cfg config.Config, outDir, finalNZB, parStagingNZB string) {
+	if strings.TrimSpace(parStagingNZB) == "" || strings.TrimSpace(cfg.Upload.Par.Dir) == "" {
 		return
 	}
 	relDir, err := filepath.Rel(outDir, filepath.Dir(finalNZB))
@@ -494,34 +521,13 @@ func (r *Runner) persistParFiles(ctx context.Context, jobID string, cfg config.C
 	}
 	keepDir := filepath.Join(strings.TrimSpace(cfg.Upload.Par.Dir), relDir)
 	_ = os.MkdirAll(keepDir, 0o755)
-	entries, _ := os.ReadDir(parDir)
-	moved := 0
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(strings.ToLower(name), ".par2") {
-			continue
-		}
-		src := filepath.Join(parDir, name)
-		dst := filepath.Join(keepDir, name)
-		_ = os.Remove(dst)
-		if err := os.Rename(src, dst); err == nil {
-			moved++
-			continue
-		}
-		if in, err := os.Open(src); err == nil {
-			tmp := dst + ".tmp"
-			_ = os.Remove(tmp)
-			if out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
-				_, _ = io.Copy(out, in)
-				_ = out.Close()
-				_ = os.Rename(tmp, dst)
-				_ = os.Remove(src)
-				moved++
-			}
-			_ = in.Close()
-		}
+	stem := strings.TrimSuffix(filepath.Base(finalNZB), filepath.Ext(finalNZB))
+	finalParNZB := filepath.Join(keepDir, stem+".par2.nzb")
+	if _, err := moveNZBStagingToFinal(parStagingNZB, finalParNZB); err != nil {
+		_ = r.jobs.AppendLog(ctx, jobID, "WARN: move par2 nzb: "+err.Error())
+		return
 	}
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("par: kept %d file(s) in %s", moved, keepDir))
+	_ = r.jobs.AppendLog(ctx, jobID, "par: kept par2 nzb in "+finalParNZB)
 }
 
 func (r *Runner) par2Binary() string {

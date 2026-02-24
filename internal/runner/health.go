@@ -163,25 +163,101 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	if err != nil {
 		return fmt.Errorf("health: read par2 dir: %w", err)
 	}
+
+	// Preferred mode: separate PAR2 NZB (*.par2.nzb)
+	var parNZBPath string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".par2") {
+		if e.IsDir() {
 			continue
 		}
 		name := strings.ToLower(e.Name())
+		if !strings.HasSuffix(name, ".par2.nzb") {
+			continue
+		}
 		if !strings.HasPrefix(name, strings.ToLower(stem)) {
 			continue
 		}
-		src := filepath.Join(parDir, e.Name())
-		dst := filepath.Join(workDir, e.Name())
-		if err := copyFilePerm(src, dst, 0o644); err != nil {
-			return fmt.Errorf("health: copy local par2 %s: %w", e.Name(), err)
+		parNZBPath = filepath.Join(parDir, e.Name())
+		localUsedPar = append(localUsedPar, parNZBPath)
+		break
+	}
+	if strings.TrimSpace(parNZBPath) != "" {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: loading par2 from par2-nzb "+parNZBPath)
+		pf, e := os.Open(parNZBPath)
+		if e != nil {
+			return fmt.Errorf("health: open par2 nzb: %w", e)
 		}
-		localUsedPar = append(localUsedPar, src)
+		parDoc, e := nzb.Parse(pf)
+		_ = pf.Close()
+		if e != nil {
+			return fmt.Errorf("health: parse par2 nzb: %w", e)
+		}
+		totalPar := 0
+		for _, pf := range parDoc.Files {
+			subj := strings.TrimSpace(pf.Subject)
+			name := ""
+			if m := regexp.MustCompile(`"([^"]+\.par2)"`).FindStringSubmatch(subj); len(m) == 2 {
+				name = filepath.Base(m[1])
+			}
+			if name == "" {
+				name = filepath.Base(strings.TrimSpace(subj))
+			}
+			if !strings.HasSuffix(strings.ToLower(name), ".par2") {
+				continue
+			}
+			segs := append([]nzb.Segment(nil), pf.Segments...)
+			sort.Slice(segs, func(i, j int) bool { return segs[i].Number < segs[j].Number })
+			dst := filepath.Join(workDir, name)
+			out, e := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if e != nil {
+				return fmt.Errorf("health: create par2 from nzb: %w", e)
+			}
+			for _, seg := range segs {
+				lines, e := cl.BodyByMessageID(strings.TrimSpace(seg.ID))
+				if e != nil {
+					_ = out.Close()
+					return fmt.Errorf("health: par2 segment download failed: %w", e)
+				}
+				data, _, _, _, e := yenc.DecodePart(lines)
+				if e != nil {
+					_ = out.Close()
+					return fmt.Errorf("health: par2 yenc decode failed: %w", e)
+				}
+				if _, e := out.Write(data); e != nil {
+					_ = out.Close()
+					return fmt.Errorf("health: par2 write failed: %w", e)
+				}
+			}
+			_ = out.Sync()
+			_ = out.Close()
+			totalPar++
+		}
+		if totalPar == 0 {
+			return fmt.Errorf("health: par2 nzb has no par2 files: %s", parNZBPath)
+		}
+		_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 files extracted from nzb=%d", totalPar))
+	} else {
+		// Backward compatibility: raw .par2 files in inbox/par2
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".par2") {
+				continue
+			}
+			name := strings.ToLower(e.Name())
+			if !strings.HasPrefix(name, strings.ToLower(stem)) {
+				continue
+			}
+			src := filepath.Join(parDir, e.Name())
+			dst := filepath.Join(workDir, e.Name())
+			if err := copyFilePerm(src, dst, 0o644); err != nil {
+				return fmt.Errorf("health: copy local par2 %s: %w", e.Name(), err)
+			}
+			localUsedPar = append(localUsedPar, src)
+		}
+		if len(localUsedPar) == 0 {
+			return fmt.Errorf("health: no local par2(.nzb) found in %s for stem %s", parDir, stem)
+		}
+		_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: local raw par2 files loaded=%d", len(localUsedPar)))
 	}
-	if len(localUsedPar) == 0 {
-		return fmt.Errorf("health: no local par2 found in %s for stem %s", parDir, stem)
-	}
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: local par2 files loaded=%d", len(localUsedPar)))
 
 	parMain := ""
 	entries, _ = os.ReadDir(workDir)
