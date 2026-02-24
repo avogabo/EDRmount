@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -215,8 +217,32 @@ func (i *Importer) EnrichLibraryResolvedByPath(ctx context.Context, cfg config.C
 	return i.EnrichLibraryResolved(ctx, cfg, importID)
 }
 
+var reNZBSeriesWithYear = regexp.MustCompile(`(?i)^(.+?)\s*\((\d{4})\)\s*(\d{1,2})x(\d{1,2})\.nzb$`)
+var reNZBSeriesNoYear = regexp.MustCompile(`(?i)^(.+?)\s*(\d{1,2})x(\d{1,2})\.nzb$`)
+
+func inferSeriesFromNZBPath(nzbPath string) (title string, year, season, episode int, ok bool) {
+	base := filepath.Base(strings.TrimSpace(nzbPath))
+	if m := reNZBSeriesWithYear.FindStringSubmatch(base); len(m) == 5 {
+		title = strings.TrimSpace(m[1])
+		year, _ = strconv.Atoi(m[2])
+		season, _ = strconv.Atoi(m[3])
+		episode, _ = strconv.Atoi(m[4])
+		return title, year, season, episode, season > 0 && episode > 0
+	}
+	if m := reNZBSeriesNoYear.FindStringSubmatch(base); len(m) == 4 {
+		title = strings.TrimSpace(m[1])
+		season, _ = strconv.Atoi(m[2])
+		episode, _ = strconv.Atoi(m[3])
+		return title, 0, season, episode, season > 0 && episode > 0
+	}
+	return "", 0, 0, 0, false
+}
+
 func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config, importID string) error {
 	db := i.jobs.DB().SQL
+	var nzbPath string
+	_ = db.QueryRowContext(ctx, `SELECT path FROM nzb_imports WHERE id=? LIMIT 1`, importID).Scan(&nzbPath)
+	fallbackTitle, fallbackYear, fallbackSeason, fallbackEpisode, hasSeriesFallback := inferSeriesFromNZBPath(nzbPath)
 	rows, err := db.QueryContext(ctx, `SELECT idx, COALESCE(filename,''), subject FROM nzb_files WHERE import_id=? ORDER BY idx`, importID)
 	if err != nil {
 		return err
@@ -251,6 +277,21 @@ func (i *Importer) EnrichLibraryResolved(ctx context.Context, cfg config.Config,
 			}
 			if fb.TMDB > 0 {
 				fbTMDB = fb.TMDB
+			}
+		}
+		if !g.IsSeries && hasSeriesFallback {
+			g.IsSeries = true
+			if g.Season <= 0 {
+				g.Season = fallbackSeason
+			}
+			if g.Episode <= 0 {
+				g.Episode = fallbackEpisode
+			}
+			if strings.TrimSpace(g.Title) == "" || strings.EqualFold(strings.TrimSpace(g.Title), strings.TrimSuffix(strings.TrimSpace(name), filepath.Ext(name))) {
+				g.Title = fallbackTitle
+			}
+			if g.Year <= 0 && fallbackYear > 0 {
+				g.Year = fallbackYear
 			}
 		}
 		kind := "movie"
