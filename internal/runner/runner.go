@@ -153,13 +153,9 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 			cfg = r.GetConfig()
 		}
 		ng := cfg.NgPost
-		provider := strings.ToLower(strings.TrimSpace(cfg.Upload.Provider))
-		if provider == "" {
-			provider = "ngpost"
-		}
-		if provider != "nyuu" && provider != "ngpost" {
-			_ = r.jobs.AppendLog(ctx, j.ID, "upload: unknown provider, fallback to ngpost: "+provider)
-			provider = "ngpost"
+		provider := "nyuu"
+		if strings.ToLower(strings.TrimSpace(cfg.Upload.Provider)) != "nyuu" {
+			_ = r.jobs.AppendLog(ctx, j.ID, "upload: forcing provider=nyuu")
 		}
 
 		// If upload path is a directory with subdirectories, treat each subdirectory as an independent season pack.
@@ -333,93 +329,6 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 		}
 
 		// Provider implementation
-		if provider == "ngpost" {
-			if !ng.Enabled || ng.Host == "" || ng.User == "" || ng.Pass == "" || ng.Groups == "" {
-				msg := "ngpost config incomplete (need enabled host/user/pass/groups)"
-				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-				_ = r.jobs.SetFailed(ctx, j.ID, msg)
-				return
-			}
-			runNgPost := func(outNZB string, inputPath string, label string) error {
-				args := []string{"-i", inputPath, "-o", outNZB, "-h", ng.Host, "-P", fmt.Sprintf("%d", ng.Port)}
-				if ng.SSL {
-					args = append(args, "-s")
-				}
-				if ng.Connections > 0 {
-					args = append(args, "-n", fmt.Sprintf("%d", ng.Connections))
-				}
-				if ng.Threads > 0 {
-					args = append(args, "-t", fmt.Sprintf("%d", ng.Threads))
-				}
-				args = append(args, "-g", ng.Groups)
-				if ng.Obfuscate {
-					args = append(args, "-x")
-				}
-				if ng.TmpDir != "" {
-					args = append(args, "--tmp_dir", ng.TmpDir)
-				}
-				args = append(args, "-u", ng.User, "-p", ng.Pass, "--disp_progress", "files")
-				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("ngpost(%s): %s -i %s -o %s", label, r.NgPostPath, inputPath, outNZB))
-				return runCommand(ctx, func(line string) {
-					clean := sanitizeLine(line, ng.Pass)
-					_ = r.jobs.AppendLog(ctx, j.ID, clean)
-					if label == "media" {
-						if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-							if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-								emitProgress(n)
-							}
-						}
-					}
-				}, r.NgPostPath, args...)
-			}
-
-			emitPhase("Subiendo a Usenet (Uploading media)")
-			emitProgress(1)
-			mediaInput := p.Path
-			if strings.TrimSpace(mediaInput) == "" && len(sourceFiles) > 0 {
-				mediaInput = sourceFiles[0]
-			}
-			err = runNgPost(stagingNZB, mediaInput, "media")
-			if err != nil {
-				msg := err.Error()
-				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-				_ = r.jobs.SetFailed(ctx, j.ID, msg)
-				return
-			}
-			if err := nzb.NormalizeCanonical(stagingNZB); err != nil {
-				msg := "nzb normalize failed: " + err.Error()
-				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
-				_ = r.jobs.SetFailed(ctx, j.ID, msg)
-				return
-			}
-
-			if parEnabled && parKeep && strings.TrimSpace(parDir) != "" {
-				parStagingNZB := filepath.Join(cacheDir, base+".par2.nzb")
-				emitPhase("Subiendo PAR2 NZB (Uploading PAR2 NZB)")
-				if e := runNgPost(parStagingNZB, parDir, "par2"); e != nil {
-					_ = r.jobs.AppendLog(ctx, j.ID, "WARN: PAR2 NZB upload failed: "+e.Error())
-				} else {
-					if e := nzb.NormalizeCanonical(parStagingNZB); e != nil {
-						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: PAR2 NZB normalize failed: "+e.Error())
-					}
-					r.persistParNZB(ctx, j.ID, cfg, outDir, finalNZB, parStagingNZB)
-				}
-			}
-
-			emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
-			emitProgress(99)
-			_, err = moveNZBStagingToFinal(stagingNZB, finalNZB)
-			if err != nil {
-				msg := err.Error()
-				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: move nzb: "+msg)
-				_ = r.jobs.SetFailed(ctx, j.ID, msg)
-				return
-			}
-			emitProgress(100)
-			_ = r.jobs.SetDone(ctx, j.ID)
-			return
-		}
-
 		if provider == "nyuu" {
 			if !ng.Enabled || ng.Host == "" || ng.User == "" || ng.Pass == "" || ng.Groups == "" {
 				msg := "nyuu config incomplete (need ngpost.enabled host/user/pass/groups as server source)"
@@ -448,17 +357,28 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				args := []string{"-C", nyuuCfg, "-o", outNZB, "--overwrite", "--"}
 				args = append(args, files...)
 				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("nyuu(classic:%s): %s -C %s -o %s --overwrite -- <files:%d>", label, r.NyuuPath, nyuuCfg, outNZB, len(files)))
-				return runCommand(ctx, func(line string) {
-					clean := sanitizeLine(line, ng.Pass)
-					_ = r.jobs.AppendLog(ctx, j.ID, clean)
-					if label == "media" {
-						if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-							if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-								emitProgress(n)
+				run := func(cmd string, argv ...string) error {
+					return runCommand(ctx, func(line string) {
+						clean := sanitizeLine(line, ng.Pass)
+						_ = r.jobs.AppendLog(ctx, j.ID, clean)
+						if label == "media" {
+							if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+								if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+									emitProgress(n)
+								}
 							}
 						}
+					}, cmd, argv...)
+				}
+				if err := run(r.NyuuPath, args...); err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "illegal instruction") {
+						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: nyuu illegal instruction; retrying with node --jitless")
+						jitArgs := append([]string{"--jitless", r.NyuuPath}, args...)
+						return run("node", jitArgs...)
 					}
-				}, r.NyuuPath, args...)
+					return err
+				}
+				return nil
 			}
 
 			emitPhase("Subiendo a Usenet (Uploading media)")
