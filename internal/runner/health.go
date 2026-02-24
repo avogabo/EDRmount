@@ -83,21 +83,14 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	}
 
 	mkvIdx := -1
-	parIdx := make([]int, 0, 16)
 	for i := range doc.Files {
 		subj := strings.ToLower(doc.Files[i].Subject)
 		if strings.Contains(subj, ".mkv") && mkvIdx < 0 {
 			mkvIdx = i
 		}
-		if strings.Contains(subj, ".par2") {
-			parIdx = append(parIdx, i)
-		}
 	}
 	if mkvIdx < 0 {
 		return errors.New("health: no mkv file found in nzb")
-	}
-	if len(parIdx) == 0 {
-		return errors.New("health: no par2 files found in nzb")
 	}
 
 	mkvName := "recovered.mkv"
@@ -150,43 +143,48 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 	}
 	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: missing segments=%d", missing))
 
-	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: downloading par2 files count=%d", len(parIdx)))
-	for _, idx := range parIdx {
-		pf := doc.Files[idx]
-		parName := fmt.Sprintf("par_%d.par2", idx)
-		if m := regexp.MustCompile(`"([^"]+\.par2)"`).FindStringSubmatch(pf.Subject); len(m) == 2 {
-			parName = filepath.Base(m[1])
-		}
-		parPath := filepath.Join(workDir, parName)
-		of, err := os.OpenFile(parPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-		if err != nil {
-			return err
-		}
-		psegs := make([]nzb.Segment, 0, len(pf.Segments))
-		psegs = append(psegs, pf.Segments...)
-		sort.Slice(psegs, func(i, j int) bool { return psegs[i].Number < psegs[j].Number })
-		for i, s := range psegs {
-			if i%300 == 0 {
-				_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: par2 %s %d/%d", parName, i, len(psegs)))
-			}
-			lines, err := cl.BodyByMessageID(strings.TrimSpace(s.ID))
-			if err != nil {
-				_ = of.Close()
-				return fmt.Errorf("health: par2 segment download failed: %w", err)
-			}
-			data, _, _, _, err := yenc.DecodePart(lines)
-			if err != nil {
-				_ = of.Close()
-				return fmt.Errorf("health: par2 decode failed: %w", err)
-			}
-			_, _ = of.Write(data)
-		}
-		_ = of.Sync()
-		_ = of.Close()
+	outRoot := strings.TrimSpace(cfg.NgPost.OutputDir)
+	if outRoot == "" {
+		outRoot = "/host/inbox/nzb"
 	}
+	parRoot := strings.TrimSpace(cfg.Upload.Par.Dir)
+	if parRoot == "" {
+		parRoot = "/host/inbox/par2"
+	}
+	relDir, _ := filepath.Rel(outRoot, filepath.Dir(nzbPath))
+	if strings.HasPrefix(relDir, "..") {
+		relDir = ""
+	}
+	parDir := filepath.Join(parRoot, relDir)
+	stem := strings.TrimSuffix(filepath.Base(nzbPath), filepath.Ext(nzbPath))
+	localUsedPar := make([]string, 0, 16)
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: using local PAR2 from %s", parDir))
+	entries, err := os.ReadDir(parDir)
+	if err != nil {
+		return fmt.Errorf("health: read par2 dir: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".par2") {
+			continue
+		}
+		name := strings.ToLower(e.Name())
+		if !strings.HasPrefix(name, strings.ToLower(stem)) {
+			continue
+		}
+		src := filepath.Join(parDir, e.Name())
+		dst := filepath.Join(workDir, e.Name())
+		if err := copyFilePerm(src, dst, 0o644); err != nil {
+			return fmt.Errorf("health: copy local par2 %s: %w", e.Name(), err)
+		}
+		localUsedPar = append(localUsedPar, src)
+	}
+	if len(localUsedPar) == 0 {
+		return fmt.Errorf("health: no local par2 found in %s for stem %s", parDir, stem)
+	}
+	_ = r.jobs.AppendLog(ctx, jobID, fmt.Sprintf("health: local par2 files loaded=%d", len(localUsedPar)))
 
 	parMain := ""
-	entries, _ := os.ReadDir(workDir)
+	entries, _ = os.ReadDir(workDir)
 	for _, e := range entries {
 		n := strings.ToLower(e.Name())
 		if strings.HasSuffix(n, ".par2") && !strings.Contains(n, ".vol") {
@@ -327,6 +325,18 @@ func (r *Runner) runHealthRepair(ctx context.Context, jobID string, cfg config.C
 
 	if err := r.healthRefreshImportDB(ctx, cfg, jobID, nzbPath); err != nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: db refresh WARN: "+err.Error())
+	}
+	if err := os.Remove(nzbPath); err == nil {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: removed corrupt nzb "+nzbPath)
+	} else {
+		_ = r.jobs.AppendLog(ctx, jobID, "health: WARN remove corrupt nzb: "+err.Error())
+	}
+	for _, p := range localUsedPar {
+		if err := os.Remove(p); err == nil {
+			_ = r.jobs.AppendLog(ctx, jobID, "health: removed used par2 "+p)
+		} else {
+			_ = r.jobs.AppendLog(ctx, jobID, "health: WARN remove par2 "+p+": "+err.Error())
+		}
 	}
 	if err := os.RemoveAll(workDir); err == nil {
 		_ = r.jobs.AppendLog(ctx, jobID, "health: cleaned workdir")
