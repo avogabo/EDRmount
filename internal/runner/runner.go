@@ -336,14 +336,13 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				return
 			}
 
-			uploadFiles := make([]string, 0, len(sourceFiles)+8)
-			uploadFiles = append(uploadFiles, sourceFiles...)
+			mediaFiles := append([]string{}, sourceFiles...)
+			parFiles := []string{}
 			if parEnabled && parDir != "" {
-				parFiles, _ := filepath.Glob(filepath.Join(parDir, "*.par2"))
-				uploadFiles = append(uploadFiles, parFiles...)
+				parFiles, _ = filepath.Glob(filepath.Join(parDir, "*.par2"))
 			}
-			if len(uploadFiles) == 0 {
-				msg := "nyuu upload has no files"
+			if len(mediaFiles) == 0 {
+				msg := "nyuu upload has no media files"
 				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
 				_ = r.jobs.SetFailed(ctx, j.ID, msg)
 				return
@@ -356,21 +355,25 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				_ = r.jobs.SetFailed(ctx, j.ID, msg)
 				return
 			}
-			args := []string{"-C", nyuuCfg, "-o", stagingNZB, "--overwrite", "--"}
-			args = append(args, uploadFiles...)
 
-			emitPhase("Subiendo a Usenet (Uploading)")
-			emitProgress(1)
-			_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("nyuu(classic): %s -C %s -o %s --overwrite -- <files:%d>", r.NyuuPath, nyuuCfg, stagingNZB, len(uploadFiles)))
-			err = runCommand(ctx, func(line string) {
-				clean := sanitizeLine(line, ng.Pass)
-				_ = r.jobs.AppendLog(ctx, j.ID, clean)
-				if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
-					if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
-						emitProgress(n)
+			runNyuu := func(outNZB string, files []string, label string) error {
+				args := []string{"-C", nyuuCfg, "-o", outNZB, "--overwrite", "--"}
+				args = append(args, files...)
+				_ = r.jobs.AppendLog(ctx, j.ID, fmt.Sprintf("nyuu(classic:%s): %s -C %s -o %s --overwrite -- <files:%d>", label, r.NyuuPath, nyuuCfg, outNZB, len(files)))
+				return runCommand(ctx, func(line string) {
+					clean := sanitizeLine(line, ng.Pass)
+					_ = r.jobs.AppendLog(ctx, j.ID, clean)
+					if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+						if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+							emitProgress(n)
+						}
 					}
-				}
-			}, r.NyuuPath, args...)
+				}, r.NyuuPath, args...)
+			}
+
+			emitPhase("Subiendo a Usenet (Uploading media)")
+			emitProgress(1)
+			err = runNyuu(stagingNZB, mediaFiles, "media")
 			if err != nil {
 				msg := err.Error()
 				_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
@@ -384,6 +387,38 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				return
 			}
 			_ = r.jobs.AppendLog(ctx, j.ID, "nyuu: classic NZB normalization OK")
+
+			if len(parFiles) > 0 {
+				stagingParNZB := filepath.Join(stagingDir, fmt.Sprintf("%s-%s.par2.nzb", base, j.ID))
+				emitPhase("Subiendo PAR2 por separado (Uploading PAR2 separately)")
+				emitProgress(90)
+				if err := runNyuu(stagingParNZB, parFiles, "par2"); err != nil {
+					msg := "par2 upload failed: " + err.Error()
+					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+					_ = r.jobs.SetFailed(ctx, j.ID, msg)
+					return
+				}
+				if err := nzb.NormalizeCanonical(stagingParNZB); err != nil {
+					msg := "par2 nzb normalize failed: " + err.Error()
+					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+					_ = r.jobs.SetFailed(ctx, j.ID, msg)
+					return
+				}
+				parRoot := strings.TrimSpace(cfg.Upload.Par.Dir)
+				if parRoot == "" {
+					parRoot = "/host/inbox/par2"
+				}
+				relDir, _ := filepath.Rel(outDir, filepath.Dir(finalNZB))
+				parNZBName := strings.TrimSuffix(filepath.Base(finalNZB), filepath.Ext(finalNZB)) + ".par2.nzb"
+				parNZBFinal := filepath.Join(parRoot, relDir, parNZBName)
+				if _, err := moveNZBStagingToFinal(stagingParNZB, parNZBFinal); err != nil {
+					msg := "move par2 nzb: " + err.Error()
+					_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
+					_ = r.jobs.SetFailed(ctx, j.ID, msg)
+					return
+				}
+				_ = r.jobs.AppendLog(ctx, j.ID, "par2 nzb moved to "+parNZBFinal)
+			}
 
 			emitPhase("Moviendo NZB a NZB inbox (Move to NZB inbox)")
 			emitProgress(99)
