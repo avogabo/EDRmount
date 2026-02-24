@@ -159,7 +159,7 @@ async function loadConfigEditor() {
 
   // Fill upload provider form
   const up = (cfg.upload || {});
-  document.getElementById('upload_provider').value = (up.provider || 'ngpost');
+  document.getElementById('upload_provider').value = (up.provider || 'nyuu');
 
   const n = (cfg.ngpost || {});
   document.getElementById('ng_enabled').checked = !!n.enabled;
@@ -184,7 +184,7 @@ async function loadConfigEditor() {
   document.getElementById('dl_user').value = d.user || '';
   document.getElementById('dl_pass').value = (d.pass && d.pass !== '***') ? d.pass : '';
   document.getElementById('dl_connections').value = d.connections || 20;
-  document.getElementById('dl_prefetch').value = (d.prefetch_segments != null) ? d.prefetch_segments : 50;
+  document.getElementById('dl_prefetch').value = (d.prefetch_segments != null) ? d.prefetch_segments : 2;
 
   // Fill runner form
   const r = (cfg.runner || {});

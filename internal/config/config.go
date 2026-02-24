@@ -107,11 +107,11 @@ func Default() Config {
 		Runner: Runner{Enabled: true, Mode: "exec"}, // default: real execution (not stub)
 
 		NgPost:   NgPost{Enabled: false, Port: 563, SSL: true, Connections: 20, Threads: 2, OutputDir: "/host/inbox/nzb", Obfuscate: true},
-		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 50},
+		Download: DownloadProvider{Enabled: false, Port: 563, SSL: true, Connections: 20, PrefetchSegments: 2},
 		Library:  (Library{Enabled: true, UppercaseFolders: true}).withDefaults(),
 		Metadata: (Metadata{}).withDefaults(),
 		Plex:     (Plex{}).withDefaults(),
-		Upload:   Upload{Provider: "ngpost", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: true, Dir: "/host/inbox/par2"}},
+		Upload:   Upload{Provider: "nyuu", Par: UploadPar{Enabled: true, RedundancyPercent: 20, KeepParityFiles: true, Dir: "/host/inbox/par2"}},
 		Rename: Rename{Provider: "filebot", FileBot: FileBot{
 			Enabled:      true,
 			Binary:       "/usr/local/bin/filebot",
@@ -181,7 +181,7 @@ func Load(path string) (Config, error) {
 		cfg.Runner.Enabled = true
 	}
 	if cfg.Upload.Provider == "" {
-		cfg.Upload.Provider = "ngpost"
+		cfg.Upload.Provider = "nyuu"
 	}
 	// FileBot is mandatory for both rename phases.
 	cfg.Rename.Provider = "filebot"
@@ -268,10 +268,10 @@ func (c Config) Validate() error {
 	}
 	// Upload provider
 	switch c.Upload.Provider {
-	case "", "ngpost", "nyuu":
+	case "", "nyuu":
 		// ok
 	default:
-		return errors.New("upload.provider must be ngpost|nyuu")
+		return errors.New("upload.provider must be nyuu")
 	}
 	// Rename provider (mandatory: filebot)
 	if strings.TrimSpace(c.Rename.Provider) != "" && c.Rename.Provider != "filebot" {

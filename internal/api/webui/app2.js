@@ -696,7 +696,7 @@ async function loadUploadSettings() {
   document.getElementById('setWatchNZBDir').value = (cfg.watch && cfg.watch.nzb && cfg.watch.nzb.dir) ? cfg.watch.nzb.dir : '';
   document.getElementById('setWatchNZBRecursive').checked = !!(cfg.watch && cfg.watch.nzb && cfg.watch.nzb.recursive);
 
-  // Provider fixed to ngpost in this UI version.
+  // Provider fixed to nyuu in this UI version.
 
   // Upload NNTP (NgPost config reused for Nyuu)
   const n = (cfg.ngpost || {});
@@ -802,7 +802,7 @@ async function loadUploadSettings() {
   document.getElementById('setDL_USER').value = d.user || '';
   document.getElementById('setDL_PASS').value = d.pass || '';
   document.getElementById('setDL_CONN').value = (d.connections != null) ? d.connections : 20;
-  document.getElementById('setDL_PREFETCH').value = (d.prefetch_segments != null) ? d.prefetch_segments : 50;
+  document.getElementById('setDL_PREFETCH').value = (d.prefetch_segments != null) ? d.prefetch_segments : 2;
   updateDLStreamsHint();
   setTimeout(updateDLStreamsHint, 0);
 
@@ -847,7 +847,7 @@ async function saveUploadSettings() {
 
     // Provider fixed for now
     cfg.upload = cfg.upload || {};
-    cfg.upload.provider = 'ngpost';
+    cfg.upload.provider = 'nyuu';
 
     // NNTP upload settings (ngpost section)
     cfg.ngpost = cfg.ngpost || {};
@@ -909,7 +909,7 @@ async function saveUploadSettings() {
     cfg.download.user = _val('setDL_USER');
     cfg.download.pass = _val('setDL_PASS');
     cfg.download.connections = _int('setDL_CONN', 20);
-    cfg.download.prefetch_segments = _int('setDL_PREFETCH', 50);
+    cfg.download.prefetch_segments = _int('setDL_PREFETCH', 2);
 
     // TMDB
     cfg.metadata = cfg.metadata || {};

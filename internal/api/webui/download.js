@@ -12,7 +12,7 @@ async function saveDownloadProvider() {
     const pass = document.getElementById('dl_pass').value;
     if (pass && pass.trim() !== '') cfg.download.pass = pass;
     cfg.download.connections = Number(document.getElementById('dl_connections').value || 20);
-    cfg.download.prefetch_segments = Number(document.getElementById('dl_prefetch').value || 50);
+    cfg.download.prefetch_segments = Number(document.getElementById('dl_prefetch').value || 2);
 
     const out = await apiPutJson('/api/v1/config', cfg);
     document.getElementById('config').value = fmtJSON(out);
