@@ -296,32 +296,40 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		end = n.size - 1
 	}
 
-	// Intentar leer desde caché primero
-	cacheKey := globalChunkCache.key(n.importID, n.fileIdx, start)
-	if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, start, int(end-start+1)); ok {
-		// Ajustar al tamaño real solicitado
-		if len(cachedData) > req.Size {
-			resp.Data = cachedData[:req.Size]
-		} else {
-			resp.Data = cachedData
+	// Alinear lecturas a chunk boundary para maximizar cache hits.
+	chunkStart := (start / chunkSize) * chunkSize
+	chunkEnd := chunkStart + requestedSize - 1
+	if chunkEnd >= n.size {
+		chunkEnd = n.size - 1
+	}
+	need := int(chunkEnd-chunkStart) + 1
+	cacheKey := globalChunkCache.key(n.importID, n.fileIdx, chunkStart)
+
+	if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, chunkStart, need); ok {
+		rel := int(start - chunkStart)
+		if rel < 0 || rel >= len(cachedData) {
+			resp.Data = nil
+			return nil
 		}
+		out := cachedData[rel:]
+		if len(out) > req.Size {
+			out = out[:req.Size]
+		}
+		resp.Data = out
 		return nil
 	}
 
 	st := n.fs.getStreamer()
 
-	// Usar singleflight para deduplicar descargas concurrentes del mismo rango
+	// Usar singleflight para deduplicar descargas concurrentes del mismo chunk
 	result, err, _ := fetchGroup.Do(cacheKey, func() (interface{}, error) {
 		buf := &bytes.Buffer{}
-		// Aumentar prefetch a 30 segmentos para mejor rendimiento
-		if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, start, end, buf, 30); err != nil {
+		if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, chunkStart, chunkEnd, buf, 50); err != nil {
 			return nil, err
 		}
 		data := buf.Bytes()
-
-		// Guardar en caché
 		if len(data) > 0 {
-			globalChunkCache.set(n.importID, n.fileIdx, start, data)
+			globalChunkCache.set(n.importID, n.fileIdx, chunkStart, data)
 		}
 		return data, nil
 	})
@@ -337,12 +345,16 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 		return nil
 	}
 
-	// Ajustar al tamaño real solicitado
-	if len(data) > req.Size {
-		resp.Data = data[:req.Size]
-	} else {
-		resp.Data = data
+	rel := int(start - chunkStart)
+	if rel < 0 || rel >= len(data) {
+		resp.Data = nil
+		return nil
 	}
+	out := data[rel:]
+	if len(out) > req.Size {
+		out = out[:req.Size]
+	}
+	resp.Data = out
 	return nil
 }
 
