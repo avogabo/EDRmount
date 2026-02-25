@@ -74,8 +74,9 @@ func MountRaw(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount,
 
 func MountLibraryManual(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
 	mp := filepath.Join(cfg.Paths.MountPoint, "library-manual")
-	mfs := &manualRoot{Cfg: cfg, Jobs: jobs}
-	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, mfs)
+	mfs := &ManualFS{Cfg: cfg, Jobs: jobs}
+	root := &manualRawRoot{fs: mfs, rel: ""}
+	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, root)
 }
 
 func MountLibraryAuto(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
