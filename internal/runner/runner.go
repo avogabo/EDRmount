@@ -393,8 +393,22 @@ func (r *Runner) runUpload(ctx context.Context, j *jobs.Job) {
 				if err != nil {
 					msg := err.Error()
 					if strings.Contains(strings.ToLower(msg), "illegal instruction") {
-						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: nyuu crashed with illegal instruction; retrying with ngpost")
-						provider = "ngpost"
+						_ = r.jobs.AppendLog(ctx, j.ID, "WARN: nyuu crashed with illegal instruction; retrying with node --jitless")
+						jitArgs := append([]string{"--jitless", r.NyuuPath}, args...)
+						err = runCommand(ctx, func(line string) {
+							clean := sanitizeLine(line, ng.Pass)
+							_ = r.jobs.AppendLog(ctx, j.ID, clean)
+							if m := rePercent.FindStringSubmatch(clean); len(m) == 2 {
+								if n, e := strconv.Atoi(m[1]); e == nil && n >= 0 && n <= 100 {
+									emitProgress(n)
+								}
+							}
+						}, "node", jitArgs...)
+						if err != nil {
+							_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+err.Error())
+							_ = r.jobs.SetFailed(ctx, j.ID, err.Error())
+							return
+						}
 					} else {
 						_ = r.jobs.AppendLog(ctx, j.ID, "ERROR: "+msg)
 						_ = r.jobs.SetFailed(ctx, j.ID, msg)
