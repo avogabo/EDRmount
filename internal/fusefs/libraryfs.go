@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -20,36 +21,26 @@ import (
 	"github.com/gaby/EDRmount/internal/streamer"
 )
 
-type autoRootNode struct {
-	fs.Inode
+type LibraryFS struct {
 	Cfg  config.Config
 	Jobs *jobs.Store
+
+	streamMu sync.Mutex
+	stream   *streamer.Streamer
 }
 
-func (n *autoRootNode) OnAdd(ctx context.Context) {
-	ch := n.NewPersistentInode(ctx, &libDir{fs: n, rel: ""}, fs.StableAttr{Mode: fuse.S_IFDIR | 0555})
-	n.AddChild("library-auto", ch, false) // Actually we mount AT library-auto, so this is the root
-}
-
-func (n *autoRootNode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) unix.Errno {
-	out.Mode = fuse.S_IFDIR | 0555
-	return 0
-}
-
-func (n *autoRootNode) Readdir(ctx context.Context) (fs.DirStream, unix.Errno) {
-	// Root of library-auto is essentially what libDir{rel:""} does
-	d := &libDir{fs: n, rel: ""}
-	return d.Readdir(ctx)
-}
-
-func (n *autoRootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, unix.Errno) {
-	d := &libDir{fs: n, rel: ""}
-	return d.Lookup(ctx, name, out)
+func (m *LibraryFS) getStreamer() *streamer.Streamer {
+	m.streamMu.Lock()
+	defer m.streamMu.Unlock()
+	if m.stream == nil {
+		m.stream = streamer.New(m.Cfg.Download, m.Jobs, m.Cfg.Paths.CacheDir, m.Cfg.Paths.CacheMaxBytes)
+	}
+	return m.stream
 }
 
 type libDir struct {
 	fs.Inode
-	fs  *autoRootNode
+	fs  *LibraryFS
 	rel string
 }
 
@@ -321,7 +312,7 @@ func (n *libDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 
 type libFile struct {
 	fs.Inode
-	fs       *autoRootNode
+	fs       *LibraryFS
 	importID string
 	fileIdx  int
 	name     string

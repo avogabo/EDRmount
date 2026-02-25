@@ -80,8 +80,8 @@ func MountLibraryManual(ctx context.Context, cfg config.Config, jobs *jobs.Store
 
 func MountLibraryAuto(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
 	mp := filepath.Join(cfg.Paths.MountPoint, "library-auto")
-	lfs := &autoRootNode{Cfg: cfg, Jobs: jobs}
-	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, lfs)
+	lfs := &LibraryFS{Cfg: cfg, Jobs: jobs}
+	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, &libDir{fs: lfs, rel: ""})
 }
 
 func detachStaleMount(mp string) {
