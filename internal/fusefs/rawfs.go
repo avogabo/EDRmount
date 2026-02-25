@@ -269,8 +269,8 @@ func max64(a, b int64) int64 {
 // chunkSize define el tamaño de cada chunk en memoria (1MB)
 const chunkSize = 1024 * 1024
 
-// minReadSize define el tamaño mínimo de lectura (4MB para mejor throughput)
-const minReadSize = 4 * 1024 * 1024
+// minReadSize define el tamaño mínimo de lectura (1MB)
+const minReadSize = 1 * 1024 * 1024
 
 func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	if req.Offset < 0 {
