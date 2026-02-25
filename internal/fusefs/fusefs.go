@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
@@ -24,67 +24,63 @@ type MountOptions struct {
 }
 
 type Mount struct {
-	conn *fuse.Conn
+	server *fuse.Server
 }
 
 func (m *Mount) Close() error {
-	if m.conn != nil {
-		return m.conn.Close()
+	if m.server != nil {
+		return m.server.Unmount()
 	}
 	return nil
 }
 
-func Start(ctx context.Context, opts MountOptions, filesystem fs.FS) (*Mount, error) {
+func Start(ctx context.Context, opts MountOptions, root fs.InodeEmbedder) (*Mount, error) {
 	if opts.Mountpoint == "" {
 		return nil, fmt.Errorf("mountpoint required")
 	}
 
-	// On container restarts, FUSE mountpoints can be left behind in a disconnected state
-	// ("Transport endpoint is not connected"). Best-effort detach any existing mount so
-	// we can mount cleanly.
 	detachStaleMount(opts.Mountpoint)
 
 	if err := os.MkdirAll(opts.Mountpoint, 0o755); err != nil {
 		return nil, err
 	}
-	mountOpts := []fuse.MountOption{
-		fuse.ReadOnly(),
-		fuse.FSName("edrmount"),
-		fuse.Subtype("edrmount"),
+	
+	options := &fs.Options{
+		MountOptions: fuse.MountOptions{
+			AllowOther: opts.AllowOther,
+			Options: []string{"ro"},
+			Name: "edrmount",
+			FsName: "edrmount",
+		},
 	}
-	if opts.AllowOther {
-		mountOpts = append(mountOpts, fuse.AllowOther())
-	}
-	c, err := fuse.Mount(opts.Mountpoint, mountOpts...)
+	
+	server, err := fs.Mount(opts.Mountpoint, root, options)
 	if err != nil {
 		return nil, err
 	}
-	m := &Mount{conn: c}
-	go func() {
-		_ = fs.Serve(c, filesystem)
-	}()
+	m := &Mount{server: server}
 	go func() {
 		<-ctx.Done()
-		_ = c.Close()
+		_ = server.Unmount()
 	}()
 	return m, nil
 }
 
 func MountRaw(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
 	mp := filepath.Join(cfg.Paths.MountPoint, "raw")
-	rfs := &RawFS{Cfg: cfg, Jobs: jobs}
+	rfs := &rawRoot{Cfg: cfg, Jobs: jobs}
 	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, rfs)
 }
 
 func MountLibraryManual(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
 	mp := filepath.Join(cfg.Paths.MountPoint, "library-manual")
-	mfs := &ManualFS{Cfg: cfg, Jobs: jobs}
+	mfs := &manualRoot{Cfg: cfg, Jobs: jobs}
 	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, mfs)
 }
 
 func MountLibraryAuto(ctx context.Context, cfg config.Config, jobs *jobs.Store) (*Mount, error) {
 	mp := filepath.Join(cfg.Paths.MountPoint, "library-auto")
-	lfs := &LibraryFS{Cfg: cfg, Jobs: jobs}
+	lfs := &autoRootNode{Cfg: cfg, Jobs: jobs}
 	return Start(ctx, MountOptions{Mountpoint: mp, AllowOther: true}, lfs)
 }
 

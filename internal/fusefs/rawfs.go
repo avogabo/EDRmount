@@ -6,15 +6,15 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 	"golang.org/x/sync/singleflight"
+	"golang.org/x/sys/unix"
 
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/jobs"
@@ -57,9 +57,7 @@ func (c *chunkCache) set(importID string, fileIdx int, offset int64, data []byte
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Si estamos por encima del límite, limpiar entradas antiguas
 	if c.size+int64(len(data)) > c.maxSize && len(c.chunks) > 0 {
-		// Eliminar la mitad de las entradas (simple LRU aproximado)
 		for k, v := range c.chunks {
 			delete(c.chunks, k)
 			c.size -= int64(len(v))
@@ -77,18 +75,11 @@ func (c *chunkCache) set(importID string, fileIdx int, offset int64, data []byte
 	c.size += int64(len(data))
 }
 
-// Global chunk cache (100MB por defecto)
 var globalChunkCache = newChunkCache(100 * 1024 * 1024)
-
-// singleflight group para deduplicar descargas concurrentes
 var fetchGroup singleflight.Group
 
-// RawFS exposes a read-only filesystem:
-//
-//	/raw/<importId>/<filename>
-//
-// where <filename> comes from NZB subject parsing (best-effort).
-type RawFS struct {
+type rawRoot struct {
+	fs.Inode
 	Cfg  config.Config
 	Jobs *jobs.Store
 
@@ -96,11 +87,10 @@ type RawFS struct {
 	stream   *streamer.Streamer
 }
 
-func (r *RawFS) Root() (fs.Node, error) {
-	return &rawRoot{fs: r}, nil
-}
+var _ = (fs.NodeOnAdder)((*rawRoot)(nil))
+var _ = (fs.NodeLookuper)((*rawRoot)(nil))
 
-func (r *RawFS) getStreamer() *streamer.Streamer {
+func (r *rawRoot) getStreamer() *streamer.Streamer {
 	r.streamMu.Lock()
 	defer r.streamMu.Unlock()
 	if r.stream == nil {
@@ -109,59 +99,48 @@ func (r *RawFS) getStreamer() *streamer.Streamer {
 	return r.stream
 }
 
-type rawRoot struct{ fs *RawFS }
-
-func (n *rawRoot) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Mode = os.ModeDir | 0o555
-	return nil
+func (n *rawRoot) OnAdd(ctx context.Context) {
+	ch := n.NewPersistentInode(ctx, &rawImportsDir{root: n}, fs.StableAttr{Mode: fuse.S_IFDIR | 0555})
+	n.AddChild("raw", ch, false)
 }
 
-func (n *rawRoot) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	return []fuse.Dirent{{Name: "raw", Type: fuse.DT_Dir}}, nil
+func (n *rawRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, unix.Errno) {
+	return nil, unix.ENOENT
 }
 
-func (n *rawRoot) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	if name == "raw" {
-		return &rawImportsDir{fs: n.fs}, nil
-	}
-	return nil, fuse.ENOENT
+type rawImportsDir struct {
+	fs.Inode
+	root *rawRoot
 }
 
-type rawImportsDir struct{ fs *RawFS }
+var _ = (fs.NodeReaddirer)((*rawImportsDir)(nil))
+var _ = (fs.NodeLookuper)((*rawImportsDir)(nil))
 
-func (n *rawImportsDir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Mode = os.ModeDir | 0o555
-	return nil
-}
-
-func (n *rawImportsDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	rows, err := n.fs.Jobs.DB().SQL.QueryContext(ctx, `SELECT id FROM nzb_imports ORDER BY imported_at DESC LIMIT 500`)
+func (n *rawImportsDir) Readdir(ctx context.Context) (fs.DirStream, unix.Errno) {
+	rows, err := n.root.Jobs.DB().SQL.QueryContext(ctx, `SELECT id FROM nzb_imports ORDER BY imported_at DESC LIMIT 500`)
 	if err != nil {
-		return nil, err
+		return nil, unix.EIO
 	}
 	defer rows.Close()
-	out := make([]fuse.Dirent, 0)
+	var entries []fuse.DirEntry
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			continue
 		}
-		out = append(out, fuse.Dirent{Name: id, Type: fuse.DT_Dir})
+		entries = append(entries, fuse.DirEntry{Name: id, Mode: fuse.S_IFDIR})
 	}
-	return out, nil
+	return fs.NewListDirStream(entries), 0
 }
 
-func (n *rawImportsDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	// validate import exists
-	row := n.fs.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT COUNT(1) FROM nzb_imports WHERE id=?`, name)
+func (n *rawImportsDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, unix.Errno) {
+	row := n.root.Jobs.DB().SQL.QueryRowContext(ctx, `SELECT COUNT(1) FROM nzb_imports WHERE id=?`, name)
 	var c int
-	if err := row.Scan(&c); err != nil {
-		return nil, fuse.ENOENT
+	if err := row.Scan(&c); err != nil || c == 0 {
+		return nil, unix.ENOENT
 	}
-	if c == 0 {
-		return nil, fuse.ENOENT
-	}
-	return &rawImportDir{fs: n.fs, importID: name}, nil
+	ch := n.NewInode(ctx, &rawImportDir{root: n.root, importID: name}, fs.StableAttr{Mode: fuse.S_IFDIR | 0555})
+	return ch, 0
 }
 
 type fileEntry struct {
@@ -172,22 +151,18 @@ type fileEntry struct {
 }
 
 type rawImportDir struct {
-	fs       *RawFS
+	fs.Inode
+	root     *rawRoot
 	importID string
 }
 
-func (n *rawImportDir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Mode = os.ModeDir | 0o555
-	return nil
-}
-
 func (n *rawImportDir) listFiles(ctx context.Context) ([]fileEntry, error) {
-	rows, err := n.fs.Jobs.DB().SQL.QueryContext(ctx, `SELECT idx,filename,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, n.importID)
+	rows, err := n.root.Jobs.DB().SQL.QueryContext(ctx, `SELECT idx,filename,subject,total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx ASC`, n.importID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]fileEntry, 0)
+	var out []fileEntry
 	seen := map[string]int{}
 	for rows.Next() {
 		var e fileEntry
@@ -199,8 +174,7 @@ func (n *rawImportDir) listFiles(ctx context.Context) ([]fileEntry, error) {
 		if dbfn.Valid {
 			base = dbfn.String
 		} else {
-			f2, ok := subject.FilenameFromSubject(e.Subject)
-			if ok {
+			if f2, ok := subject.FilenameFromSubject(e.Subject); ok {
 				base = f2
 			}
 		}
@@ -208,55 +182,72 @@ func (n *rawImportDir) listFiles(ctx context.Context) ([]fileEntry, error) {
 			base = fmt.Sprintf("file_%04d.bin", e.Idx)
 		}
 
-		name := base
 		seen[base]++
 		if seen[base] > 1 {
-			name = withSuffixBeforeExt(base, seen[base])
+			base = withSuffixBeforeExt(base, seen[base])
 		}
-		e.Name = name
+		e.Name = base
 		out = append(out, e)
 	}
 	return out, nil
 }
 
-func (n *rawImportDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+var _ = (fs.NodeReaddirer)((*rawImportDir)(nil))
+var _ = (fs.NodeLookuper)((*rawImportDir)(nil))
+
+func (n *rawImportDir) Readdir(ctx context.Context) (fs.DirStream, unix.Errno) {
 	files, err := n.listFiles(ctx)
 	if err != nil {
-		return nil, err
+		return nil, unix.EIO
 	}
-	out := make([]fuse.Dirent, 0, len(files))
+	var entries []fuse.DirEntry
 	for _, f := range files {
-		out = append(out, fuse.Dirent{Name: f.Name, Type: fuse.DT_File})
+		entries = append(entries, fuse.DirEntry{Name: f.Name, Mode: fuse.S_IFREG})
 	}
-	return out, nil
+	return fs.NewListDirStream(entries), 0
 }
 
-func (n *rawImportDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
+func (n *rawImportDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, unix.Errno) {
 	files, err := n.listFiles(ctx)
 	if err != nil {
-		return nil, fuse.ENOENT
+		return nil, unix.EIO
 	}
 	for _, f := range files {
 		if f.Name == name {
-			return &rawFile{fs: n.fs, importID: n.importID, fileIdx: f.Idx, name: f.Name, size: f.Bytes}, nil
+			child := n.NewInode(ctx, &rawFile{
+				root:     n.root,
+				importID: n.importID,
+				fileIdx:  f.Idx,
+				name:     f.Name,
+				size:     f.Bytes,
+			}, fs.StableAttr{Mode: fuse.S_IFREG | 0444})
+			return child, 0
 		}
 	}
-	return nil, fuse.ENOENT
+	return nil, unix.ENOENT
 }
 
 type rawFile struct {
-	fs       *RawFS
+	fs.Inode
+	root     *rawRoot
 	importID string
 	fileIdx  int
 	name     string
 	size     int64
 }
 
-func (n *rawFile) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Mode = 0o444
-	a.Size = uint64(max64(0, n.size))
-	a.Mtime = time.Now()
-	return nil
+var _ = (fs.NodeOpener)((*rawFile)(nil))
+var _ = (fs.NodeGetattrer)((*rawFile)(nil))
+
+func (n *rawFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) unix.Errno {
+	out.Mode = fuse.S_IFREG | 0444
+	out.Size = uint64(max64(0, n.size))
+	out.Mtime = uint64(time.Now().Unix())
+	return 0
+}
+
+func (n *rawFile) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, unix.Errno) {
+	return &rawFileHandle{file: n}, fuse.FOPEN_KEEP_CACHE, 0
 }
 
 func max64(a, b int64) int64 {
@@ -266,39 +257,34 @@ func max64(a, b int64) int64 {
 	return b
 }
 
-// chunkSize define el tamaño de cada chunk en memoria (1MB)
-const chunkSize = 1024 * 1024
+type rawFileHandle struct {
+	file *rawFile
+}
 
-// minReadSize define el tamaño mínimo de lectura (1MB)
+var _ = (fs.FileReader)((*rawFileHandle)(nil))
+
+const chunkSize = 1024 * 1024
 const minReadSize = 1 * 1024 * 1024
 
-func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	if req.Offset < 0 {
-		return fuse.EIO
-	}
-	if n.size <= 0 {
-		return fuse.EIO
+func (h *rawFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, unix.Errno) {
+	n := h.file
+	if off < 0 || n.size <= 0 || off >= n.size {
+		return fuse.ReadResultData(nil), 0
 	}
 
-	start := int64(req.Offset)
-	// Aumentar el tamaño de lectura para mejor throughput
-	requestedSize := int64(req.Size)
-	if requestedSize < minReadSize {
-		requestedSize = minReadSize
+	start := off
+	reqSize := int64(len(dest))
+	if reqSize < minReadSize {
+		reqSize = minReadSize
 	}
 
-	end := start + requestedSize - 1
-	if start >= n.size {
-		resp.Data = nil
-		return nil
-	}
+	end := start + reqSize - 1
 	if end >= n.size {
 		end = n.size - 1
 	}
 
-	// Alinear lecturas a chunk boundary para maximizar cache hits.
 	chunkStart := (start / chunkSize) * chunkSize
-	chunkEnd := chunkStart + requestedSize - 1
+	chunkEnd := chunkStart + reqSize - 1
 	if chunkEnd >= n.size {
 		chunkEnd = n.size - 1
 	}
@@ -308,20 +294,17 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 	if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, chunkStart, need); ok {
 		rel := int(start - chunkStart)
 		if rel < 0 || rel >= len(cachedData) {
-			resp.Data = nil
-			return nil
+			return fuse.ReadResultData(nil), 0
 		}
 		out := cachedData[rel:]
-		if len(out) > req.Size {
-			out = out[:req.Size]
+		if len(out) > len(dest) {
+			out = out[:len(dest)]
 		}
-		resp.Data = out
-		return nil
+		return fuse.ReadResultData(out), 0
 	}
 
-	st := n.fs.getStreamer()
+	st := n.root.getStreamer()
 
-	// Usar singleflight para deduplicar descargas concurrentes del mismo chunk
 	result, err, _ := fetchGroup.Do(cacheKey, func() (interface{}, error) {
 		buf := &bytes.Buffer{}
 		if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, chunkStart, chunkEnd, buf, 50); err != nil {
@@ -336,64 +319,42 @@ func (n *rawFile) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Re
 
 	if err != nil {
 		log.Printf("fuse read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
-		return fuse.EIO
+		return fuse.ReadResultData(nil), unix.EIO
 	}
 
 	data := result.([]byte)
 	if len(data) == 0 {
-		resp.Data = nil
-		return nil
+		return fuse.ReadResultData(nil), 0
 	}
 
 	rel := int(start - chunkStart)
 	if rel < 0 || rel >= len(data) {
-		resp.Data = nil
-		return nil
+		return fuse.ReadResultData(nil), 0
 	}
 	out := data[rel:]
-	if len(out) > req.Size {
-		out = out[:req.Size]
+	if len(out) > len(dest) {
+		out = out[:len(dest)]
 	}
-	resp.Data = out
-	return nil
+	return fuse.ReadResultData(out), 0
 }
 
-// Ensure interfaces
-var _ fs.FS = (*RawFS)(nil)
-var _ fs.Node = (*rawRoot)(nil)
-var _ fs.HandleReadDirAller = (*rawRoot)(nil)
-var _ fs.NodeStringLookuper = (*rawRoot)(nil)
-
-var _ fs.Node = (*rawImportsDir)(nil)
-var _ fs.HandleReadDirAller = (*rawImportsDir)(nil)
-var _ fs.NodeStringLookuper = (*rawImportsDir)(nil)
-
-var _ fs.Node = (*rawImportDir)(nil)
-var _ fs.HandleReadDirAller = (*rawImportDir)(nil)
-var _ fs.NodeStringLookuper = (*rawImportDir)(nil)
-
-var _ fs.Node = (*rawFile)(nil)
-var _ fs.HandleReader = (*rawFile)(nil)
-
-// Helpers for Windows-incompatible names (just in case)
 func safeName(s string) string {
 	s = filepath.Base(s)
 	s = strings.ReplaceAll(s, "/", "_")
 	return s
 }
 
-func withSuffixBeforeExt(name string, n int) string {
-	if n <= 1 {
+func withSuffixBeforeExt(name string, m int) string {
+	if m <= 1 {
 		return name
 	}
 	ext := filepath.Ext(name)
 	base := strings.TrimSuffix(name, ext)
 	if ext == "" {
-		return fmt.Sprintf("%s__%d", base, n)
+		return fmt.Sprintf("%s__%d", base, m)
 	}
-	return fmt.Sprintf("%s__%d%s", base, n, ext)
+	return fmt.Sprintf("%s__%d%s", base, m, ext)
 }
 
-// avoid unused imports in case of future expansion
 var _ = sql.ErrNoRows
 var _ = safeName

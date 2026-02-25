@@ -19,9 +19,7 @@ func AutoVirtualPathsForImport(ctx context.Context, cfg config.Config, st *jobs.
 	if st == nil {
 		return nil, fmt.Errorf("jobs store required")
 	}
-	lfs := &LibraryFS{Cfg: cfg, Jobs: st}
-	// ensure resolver init
-	_, _ = lfs.Root()
+	lfs := &autoRootNode{Cfg: cfg, Jobs: st}
 	ld := &libDir{fs: lfs, rel: ""}
 
 	rows, err := st.DB().SQL.QueryContext(ctx, `SELECT idx, filename, subject, total_bytes FROM nzb_files WHERE import_id=? ORDER BY idx`, importID)

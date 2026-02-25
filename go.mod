@@ -7,6 +7,7 @@ toolchain go1.24.12
 require (
 	bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5
 	github.com/google/uuid v1.6.0
+	github.com/hanwen/go-fuse/v2 v2.9.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.37.0
 	golang.org/x/text v0.33.0
