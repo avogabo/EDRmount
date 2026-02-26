@@ -66,10 +66,6 @@ func (r *Runner) Run(ctx context.Context) {
 					defer func() { <-semUpload }()
 					r.runUpload(ctx, j)
 				}(job)
-			case jobs.TypeHealthRepair:
-				go r.runHealth(ctx, job)
-			case jobs.TypeHealthScan:
-				go r.runHealthScan(ctx, job)
 			default:
 				go r.runImport(ctx, job)
 			}
