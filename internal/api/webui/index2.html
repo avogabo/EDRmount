@@ -169,13 +169,6 @@
             <div class="muted" style="font-size:12px">NZB inbox</div>
           </div>
         </div>
-        <div class="navItem" data-page="health">
-          <div class="icon">🩺</div>
-          <div>
-            <div><b>Health</b></div>
-            <div class="muted" style="font-size:12px">NZB repair</div>
-          </div>
-        </div>
         <div class="navItem" data-page="settings">
           <div class="icon">⚙</div>
           <div>
@@ -198,13 +191,7 @@
           <div class="split">
             <div>
               <h2 class="sectionTitle">Biblioteca (Library)</h2>
-              <div class="muted">Vista de <b>library-auto</b> (FUSE). Toggle para manual.</div>
-            </div>
-            <div class="row">
-              <div class="toggle" role="tablist" aria-label="Auto/Manual">
-                <button id="tabAuto" class="active" type="button">Auto</button>
-                <button id="tabManual" type="button">Manual</button>
-              </div>
+              <div class="muted">Vista de <b>library-auto</b> (FUSE).</div>
             </div>
           </div>
 
@@ -280,35 +267,6 @@
             </div>
 
           </div>
-
-          <div id="manualPane" class="hide">
-            <div class="split">
-              <div>
-                <div class="muted" style="margin:10px 0">Vista <b>Manual</b> (editable, DB-backed). (Manual view)</div>
-              </div>
-              <div class="row">
-                <button class="btn" id="btnManUp">Arriba (Up)</button>
-                <button class="btn" id="btnManRefresh">Actualizar (Refresh)</button>
-                <span class="muted" id="manStatus"></span>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div class="crumbs" id="manCrumbs" style="flex:1"></div>
-            </div>
-
-            <div class="grid">
-              <div class="list">
-                <div class="listHeader" style="grid-template-columns: 1fr 110px 190px 70px;">
-                  <div>Nombre (Name)</div>
-                  <div class="mono">Size</div>
-                  <div class="mono">ModTime</div>
-                  <div>Acción</div>
-                </div>
-                <div id="manList"></div>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Upload page placeholder -->
@@ -378,44 +336,6 @@
           </div>
 
           <div class="muted" style="margin-top:10px" id="impSel">(ningún NZB seleccionado)</div>
-        </section>
-
-        <!-- Health page -->
-        <section id="page_health" class="hide">
-          <div class="split">
-            <div>
-              <h2 class="sectionTitle">Health (NZB Repair)</h2>
-              <div class="muted">Vista tipo Import, con estado health por NZB.</div>
-            </div>
-            <div class="row">
-              <button class="btn" id="btnHealthUp">Arriba (Up)</button>
-              <button class="btn" id="btnHealthRefresh">Actualizar (Refresh)</button>
-              <button class="btn" id="btnHealthScan">Escanear ahora (Scan now)</button>
-              <span class="muted" id="healthStatus"></span>
-            </div>
-          </div>
-
-          <div class="row" style="margin-top:8px"><div class="crumbs" id="healthCrumbs" style="flex:1"></div></div>
-
-          <div class="grid" style="margin-top:12px">
-            <div class="list">
-              <div id="healthSummary" class="muted" style="padding:10px 12px;border-bottom:1px solid #262626"></div>
-              <div class="listHeader">
-                <div>Nombre (Name)</div>
-                <div class="mono">Size</div>
-                <div class="mono">ModTime</div>
-              </div>
-              <div id="healthList"></div>
-            </div>
-
-            <div class="list" style="padding:12px">
-              <b>Notas</b>
-              <div class="muted" style="margin-top:6px">
-                - La reparación solo funciona si <b>health.enabled</b> está activo en Ajustes.<br/>
-                - Los backups del NZB original se guardan en <span class="mono">/host/inbox/nzb/.health-bak</span>.
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Settings page placeholder -->
@@ -652,31 +572,6 @@
                 </label>
               </div>
             </div>
-
-            <div class="list" style="padding:12px">
-              <b>Health (NZB Repair)</b>
-              <div class="muted" style="margin-top:6px">Configuración de escaneo/reparación automática.</div>
-              <div class="row" style="margin-top:12px">
-                <label class="muted"><input type="checkbox" id="setHealthEnabled" /> Activar health</label>
-                <label class="muted"><input type="checkbox" id="setHealthScanEnabled" /> Escaneo automático</label>
-                <label class="muted"><input type="checkbox" id="setHealthAutoRepair" /> Reparación automática</label>
-              </div>
-              <div class="row" style="margin-top:8px">
-                <label class="muted">Presupuesto diario (min)
-                  <input id="setHealthMaxDurationMins" type="number" style="width:110px; margin-left:8px" placeholder="180" />
-                </label>
-                <label class="muted">Reanudar cada (h)
-                  <input id="setHealthChunkEveryHours" type="number" style="width:110px; margin-left:8px" placeholder="24" />
-                </label>
-                <label class="muted">Intervalo completo (h)
-                  <input id="setHealthIntervalHours" type="number" style="width:110px; margin-left:8px" placeholder="24" />
-                </label>
-                <label class="muted">Lock TTL (h)
-                  <input id="setHealthLockTTLHours" type="number" style="width:110px; margin-left:8px" placeholder="6" />
-                </label>
-              </div>
-            </div>
-
             <div class="list" style="padding:12px">
               <b>Plex</b>
               <div class="muted" style="margin-top:6px">Refresco selectivo tras importar en library-auto.</div>

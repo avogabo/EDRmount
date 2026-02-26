@@ -254,7 +254,6 @@ func New(cfg config.Config, opts Options) (*Server, func() error, error) {
 	s.registerLibraryAutoListRoutes()
 	s.registerLibraryTemplatesRoutes()
 	s.registerUploadSummaryRoutes()
-	s.registerHealthRoutes()
 	s.registerFileBotRoutes()
 
 	// Backups

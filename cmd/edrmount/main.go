@@ -11,7 +11,6 @@ import (
 	"github.com/gaby/EDRmount/internal/backup"
 	"github.com/gaby/EDRmount/internal/config"
 	"github.com/gaby/EDRmount/internal/fusefs"
-	"github.com/gaby/EDRmount/internal/health"
 	"github.com/gaby/EDRmount/internal/runner"
 	"github.com/gaby/EDRmount/internal/watch"
 )
@@ -89,26 +88,12 @@ func main() {
 		}
 		go sched.Run(ctx)
 
-		// Health scan scheduler (enqueues health_scan_nzb according to config)
-		hs := &health.Scheduler{
-			Jobs: srvJobs,
-			Cfg: func() config.HealthConfig {
-				return srv.Config().Health
-			},
-		}
-		go hs.Run(ctx)
-
 		if enableFuse {
 			if cfg.Library.Enabled {
 				if _, err := fusefs.MountLibraryAuto(ctx, cfg, srvJobs); err != nil {
 					log.Printf("FUSE library-auto mount failed: %v", err)
 				} else {
 					log.Printf("FUSE library-auto mounted at %s/library-auto", cfg.Paths.MountPoint)
-				}
-				if _, err := fusefs.MountLibraryManual(ctx, cfg, srvJobs); err != nil {
-					log.Printf("FUSE library-manual mount failed: %v", err)
-				} else {
-					log.Printf("FUSE library-manual mounted at %s/library-manual", cfg.Paths.MountPoint)
 				}
 			}
 		}
