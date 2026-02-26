@@ -263,51 +263,32 @@ type rawFileHandle struct {
 
 var _ = (fs.FileReader)((*rawFileHandle)(nil))
 
-const chunkSize = 1024 * 1024
+const chunkSize = 1 * 1024 * 1024
 const minReadSize = 1 * 1024 * 1024
+const readPrefetchChunks = 4
+const streamPrefetch = 200
 
-func (h *rawFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, unix.Errno) {
+func (h *rawFileHandle) readChunk(ctx context.Context, st *streamer.Streamer, chunkStart int64) ([]byte, error) {
 	n := h.file
-	if off < 0 || n.size <= 0 || off >= n.size {
-		return fuse.ReadResultData(nil), 0
+	if chunkStart < 0 || chunkStart >= n.size {
+		return nil, nil
 	}
-
-	start := off
-	reqSize := int64(len(dest))
-	if reqSize < minReadSize {
-		reqSize = minReadSize
-	}
-
-	end := start + reqSize - 1
-	if end >= n.size {
-		end = n.size - 1
-	}
-
-	chunkStart := (start / chunkSize) * chunkSize
-	chunkEnd := chunkStart + reqSize - 1
+	chunkEnd := chunkStart + int64(chunkSize) - 1
 	if chunkEnd >= n.size {
 		chunkEnd = n.size - 1
 	}
-	need := int(chunkEnd-chunkStart) + 1
+	size := int(chunkEnd-chunkStart) + 1
 	cacheKey := globalChunkCache.key(n.importID, n.fileIdx, chunkStart)
-
-	if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, chunkStart, need); ok {
-		rel := int(start - chunkStart)
-		if rel < 0 || rel >= len(cachedData) {
-			return fuse.ReadResultData(nil), 0
-		}
-		out := cachedData[rel:]
-		if len(out) > len(dest) {
-			out = out[:len(dest)]
-		}
-		return fuse.ReadResultData(out), 0
+	if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, chunkStart, size); ok {
+		return cachedData, nil
 	}
 
-	st := n.root.getStreamer()
-
 	result, err, _ := fetchGroup.Do(cacheKey, func() (interface{}, error) {
+		if cachedData, ok := globalChunkCache.get(n.importID, n.fileIdx, chunkStart, size); ok {
+			return cachedData, nil
+		}
 		buf := &bytes.Buffer{}
-		if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, chunkStart, chunkEnd, buf, 50); err != nil {
+		if err := st.StreamRange(ctx, n.importID, n.fileIdx, n.name, chunkStart, chunkEnd, buf, streamPrefetch); err != nil {
 			return nil, err
 		}
 		data := buf.Bytes()
@@ -316,22 +297,61 @@ func (h *rawFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.
 		}
 		return data, nil
 	})
-
 	if err != nil {
-		log.Printf("fuse read error import=%s fileIdx=%d: %v", n.importID, n.fileIdx, err)
-		return fuse.ReadResultData(nil), unix.EIO
+		return nil, err
+	}
+	data, _ := result.([]byte)
+	return data, nil
+}
+
+func (h *rawFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, unix.Errno) {
+	n := h.file
+	if off < 0 || n.size <= 0 || off >= n.size {
+		return fuse.ReadResultData(nil), 0
 	}
 
-	data := result.([]byte)
-	if len(data) == 0 {
+	readLen := int64(len(dest))
+	if readLen <= 0 {
+		return fuse.ReadResultData(nil), 0
+	}
+	if readLen < minReadSize {
+		readLen = minReadSize
+	}
+
+	start := off
+	end := start + readLen - 1
+	if end >= n.size {
+		end = n.size - 1
+	}
+
+	chunkStart := (start / chunkSize) * chunkSize
+	chunkEnd := (end / int64(chunkSize)) * int64(chunkSize)
+	prefetchEnd := chunkEnd + int64(readPrefetchChunks*chunkSize)
+	if prefetchEnd >= n.size {
+		prefetchEnd = ((n.size - 1) / int64(chunkSize)) * int64(chunkSize)
+	}
+
+	st := n.root.getStreamer()
+	window := make([]byte, 0, int(end-chunkStart)+1)
+	for cur := chunkStart; cur <= prefetchEnd; cur += int64(chunkSize) {
+		data, err := h.readChunk(ctx, st, cur)
+		if err != nil {
+			log.Printf("fuse read error import=%s fileIdx=%d chunk=%d: %v", n.importID, n.fileIdx, cur, err)
+			return fuse.ReadResultData(nil), unix.EIO
+		}
+		if cur <= chunkEnd && len(data) > 0 {
+			window = append(window, data...)
+		}
+	}
+	if len(window) == 0 {
 		return fuse.ReadResultData(nil), 0
 	}
 
 	rel := int(start - chunkStart)
-	if rel < 0 || rel >= len(data) {
+	if rel < 0 || rel >= len(window) {
 		return fuse.ReadResultData(nil), 0
 	}
-	out := data[rel:]
+	out := window[rel:]
 	if len(out) > len(dest) {
 		out = out[:len(dest)]
 	}

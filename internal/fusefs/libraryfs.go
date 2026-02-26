@@ -368,12 +368,7 @@ func (h *libFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.
 		return fuse.ReadResultData(out), 0
 	}
 
-	// This assumes streamer is injected globally or exposed via Jobs. Let's create a temp method or refactor getStreamer
-	// Right now we can just use the global chunk cache with singleflight but we need a streamer instance.
-	// For simplicity in the refactor, we'll initialize a streamer here temporarily if needed, or get it from root.
-	
-	// Temporary streamer instantiation (should be shared later)
-	st := streamer.New(n.fs.Cfg.Download, n.fs.Jobs, n.fs.Cfg.Paths.CacheDir, n.fs.Cfg.Paths.CacheMaxBytes)
+	st := n.fs.getStreamer()
 
 	result, err, _ := fetchGroup.Do(cacheKey, func() (interface{}, error) {
 		buf := &bytes.Buffer{}
